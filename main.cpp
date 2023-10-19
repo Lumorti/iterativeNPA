@@ -749,7 +749,7 @@ double solveMOSEK(polynomial obj, std::vector<polynomialMatrix>& psd, std::vecto
     return solveMOSEK(obj, psd, constraintsZero, constraintsPositive, verbosity, variables, variableValues);
 }
 
-// Encode a monomial into a format better suited for a neural net TODO
+// Encode a monomial into a format better suited for a neural net 
 std::vector<double> encodeMonomial(monomial m, polynomialMatrix& mat) {
 
     // The output
@@ -872,86 +872,143 @@ int main(int argc, char* argv[]) {
     std::vector<polynomial> constraintsZero;
     std::vector<polynomial> constraintsPositive;
 
-    // If testing
+    // If testing TODO
     if (testing) {
 
-        std::vector<monomial> variables;
-        std::vector<double> variableValues;
-        double obj = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, 1, variables, variableValues);
+        // Add the known lower bound from seesawing as a constraint
+        double knownLowerBound = 5.001;
+        double knownUpperBound = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, 0);
+        std::cout << "Original upper bound: " << knownUpperBound << std::endl;
+        //double knownUpperBound = 5.005;
+        //double knownLowerBound = 5.00447;
+        //double knownUpperBound = 5.00448;
 
-        std::cout << "There are " << variables.size() << " variables" << std::endl;
+        polynomial lowerBoundCon = objective;
+        lowerBoundCon.push_back(std::make_pair(-knownLowerBound, monomial()));
+        constraintsPositive.push_back(lowerBoundCon);
 
-        polynomialMatrix fullMatrix = momentMatrices[0];
-
-        // The full matrix with the variables replaced by their values
-        Eigen::MatrixXd fullMatrixEigen = Eigen::MatrixXd::Zero(fullMatrix.size(), fullMatrix.size());
-        for (int i=0; i<fullMatrix.size(); i++) {
-            for (int j=0; j<fullMatrix.size(); j++) {
-                for (int k=0; k<variables.size(); k++) {
-                    if (fullMatrix[i][j][0].second == variables[k]) {
-                        fullMatrixEigen(i, j) = variableValues[k];
-                    }
-                }
-            }
+        polynomial upperBoundCon = objective;
+        upperBoundCon.push_back(std::make_pair(-knownUpperBound, monomial()));
+        for (int i=0; i<upperBoundCon.size(); i++) {
+            upperBoundCon[i].first *= -1;
         }
-        std::cout << fullMatrixEigen << std::endl;
+        constraintsPositive.push_back(upperBoundCon);
 
-        // See if the final moments can learnt by a nn TODO
-        int inputSize = 2;
-        Eigen::MatrixXd inputs = Eigen::MatrixXd::Zero(inputSize, variables.size());
-        Eigen::MatrixXd outputs = Eigen::MatrixXd::Zero(1, variables.size());
-        for (int i=0; i<variables.size(); i++) {
-            auto encoded = encodeMonomial(variables[i], fullMatrix);
-            std::cout << "Encoded " << variables[i] << " as ";
-            for (int j=0; j<encoded.size(); j++) {
-                std::cout << encoded[j] << " ";
-                inputs(j, i) = encoded[j];
-            }
-            std::cout << " = " << variableValues[i] << std::endl;
-            outputs(0, i) = variableValues[i];
+        std::vector<monomial> variablesToBound;
+        std::vector<std::pair<double,double>> bounds;
+        addVariables(variablesToBound, objective);
+
+        // For each monomial in the objective
+        for (int i=0; i<variablesToBound.size(); i++) {
+
+            monomial monomialToBound = variablesToBound[i];
+
+            // Find the min of <A1>
+            polynomial objectiveNew = {std::make_pair(1, monomialToBound)};
+            double maxBound = solveMOSEK(objectiveNew, momentMatrices, constraintsZero, constraintsPositive, 0);
+
+            // Find the max of <A1>
+            objectiveNew = {std::make_pair(-1, monomialToBound)};
+            double minBound = -solveMOSEK(objectiveNew, momentMatrices, constraintsZero, constraintsPositive, 0);
+
+            bounds.push_back(std::make_pair(minBound, maxBound));
+
+            std::cout << "Bound of "<< monomialToBound << " is [" << minBound << ", " << maxBound << "]" << std::endl;
+
         }
+
+        // Add the bounds as linear constraints
+        for (int i=0; i<variablesToBound.size(); i++) {
+            monomial monomialToBound = variablesToBound[i];
+            polynomial newConUpper = {std::make_pair(1, monomialToBound), std::make_pair(-bounds[i].first, monomial())};
+            constraintsPositive.push_back(newConUpper);
+            polynomial newConLower = {std::make_pair(-1, monomialToBound), std::make_pair(bounds[i].second, monomial())};
+            constraintsPositive.push_back(newConLower);
+        }
+
+        // Now run with the bounds as linear constraints
+        double newUpperBound = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, 0);
+        std::cout << "New upper bound is " << newUpperBound << std::endl;
 
         return 0;
 
-        // Construct a network object
-        MiniDNN::Network net;
-        MiniDNN::Layer* layer1 = new MiniDNN::FullyConnected<MiniDNN::ReLU>(inputSize, 100);
-        net.add_layer(layer1);
-        MiniDNN::Layer* layer2 = new MiniDNN::FullyConnected<MiniDNN::ReLU>(100, 10);
-        net.add_layer(layer2);
-        MiniDNN::Layer* layer3 = new MiniDNN::FullyConnected<MiniDNN::Identity>(10, 1);
-        net.add_layer(layer3);
-        net.set_output(new MiniDNN::RegressionMSE());
+        //std::vector<monomial> variables;
+        //std::vector<double> variableValues;
+        //double obj = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, 1, variables, variableValues);
 
-        // Create optimizer object
-        MiniDNN::RMSProp opt;
-        opt.m_lrate = 0.001;
-        MiniDNN::VerboseCallback callback;
-        net.set_callback(callback);
+        //std::cout << "There are " << variables.size() << " variables" << std::endl;
 
-        // Initialize parameters with N(0, 0.01^2) using random seed 123
-        net.init(0, 0.01, 123);
+        //polynomialMatrix fullMatrix = momentMatrices[0];
 
-        // Fit the model with a batch size of 100, running 10 epochs with random seed 123
-        net.fit(opt, inputs, outputs, 100, 10, 123);
+        //// The full matrix with the variables replaced by their values
+        //Eigen::MatrixXd fullMatrixEigen = Eigen::MatrixXd::Zero(fullMatrix.size(), fullMatrix.size());
+        //for (int i=0; i<fullMatrix.size(); i++) {
+            //for (int j=0; j<fullMatrix.size(); j++) {
+                //for (int k=0; k<variables.size(); k++) {
+                    //if (fullMatrix[i][j][0].second == variables[k]) {
+                        //fullMatrixEigen(i, j) = variableValues[k];
+                    //}
+                //}
+            //}
+        //}
+        //std::cout << fullMatrixEigen << std::endl;
 
-        // Compare the prediction with the ground truth
-        Eigen::Matrix pred = net.predict(inputs);
-        double mse = (pred - outputs).cwiseAbs().sum() / pred.cols();
-        for (int i=0; i<10; i++) {
-            std::cout << pred(0, i) << " " << outputs(0, i) << std::endl;
-        }
-        std::cout << "average error: " << mse << std::endl;
+        //// See if the final moments can learnt by a nn
+        //int inputSize = 2;
+        //Eigen::MatrixXd inputs = Eigen::MatrixXd::Zero(inputSize, variables.size());
+        //Eigen::MatrixXd outputs = Eigen::MatrixXd::Zero(1, variables.size());
+        //for (int i=0; i<variables.size(); i++) {
+            //auto encoded = encodeMonomial(variables[i], fullMatrix);
+            //std::cout << "Encoded " << variables[i] << " as ";
+            //for (int j=0; j<encoded.size(); j++) {
+                //std::cout << encoded[j] << " ";
+                //inputs(j, i) = encoded[j];
+            //}
+            //std::cout << " = " << variableValues[i] << std::endl;
+            //outputs(0, i) = variableValues[i];
+        //}
 
-        // Get the total number of parameters
-        auto params = net.get_parameters();
-        int totalParams = 0;
-        for (int i=0; i<params.size(); i++) {
-            totalParams += params[i].size();
-        }
-        std::cout << "There are " << totalParams << " parameters" << std::endl;
+        //return 0;
 
-        return 0;
+        //// Construct a network object
+        //MiniDNN::Network net;
+        //MiniDNN::Layer* layer1 = new MiniDNN::FullyConnected<MiniDNN::ReLU>(inputSize, 100);
+        //net.add_layer(layer1);
+        //MiniDNN::Layer* layer2 = new MiniDNN::FullyConnected<MiniDNN::ReLU>(100, 10);
+        //net.add_layer(layer2);
+        //MiniDNN::Layer* layer3 = new MiniDNN::FullyConnected<MiniDNN::Identity>(10, 1);
+        //net.add_layer(layer3);
+        //net.set_output(new MiniDNN::RegressionMSE());
+
+        //// Create optimizer object
+        //MiniDNN::RMSProp opt;
+        //opt.m_lrate = 0.001;
+        //MiniDNN::VerboseCallback callback;
+        //net.set_callback(callback);
+
+        //// Initialize parameters with N(0, 0.01^2) using random seed 123
+        //net.init(0, 0.01, 123);
+
+        //// Fit the model with a batch size of 100, running 10 epochs with random seed 123
+        //net.fit(opt, inputs, outputs, 100, 10, 123);
+
+        //// Compare the prediction with the ground truth
+        //Eigen::Matrix pred = net.predict(inputs);
+        //double mse = (pred - outputs).cwiseAbs().sum() / pred.cols();
+        //for (int i=0; i<10; i++) {
+            //std::cout << pred(0, i) << " " << outputs(0, i) << std::endl;
+        //}
+        //std::cout << "average error: " << mse << std::endl;
+
+        //// Get the total number of parameters
+        //auto params = net.get_parameters();
+        //int totalParams = 0;
+        //for (int i=0; i<params.size(); i++) {
+            //totalParams += params[i].size();
+        //}
+        //std::cout << "There are " << totalParams << " parameters" << std::endl;
+
+        //return 0;
 
     }
 
