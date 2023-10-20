@@ -772,6 +772,44 @@ std::vector<double> encodeMonomial(monomial m, polynomialMatrix& mat) {
 
 }
 
+// Get the eigenvalues and vectors of a matrix after replacement
+void getEigens(polynomialMatrix& momentMatrix, std::vector<monomial>& variables, std::vector<double>& varVals, std::vector<std::vector<double>>& eigenvectors, std::vector<double>& eigenvalues) {
+
+    // Output the matrix
+    std::cout << "Moment matrix: " << std::endl;
+    std::cout << momentMatrix << std::endl;
+
+    // Replace each variable with its value
+    Eigen::MatrixXd momentMatrixEigen = Eigen::MatrixXd::Zero(momentMatrix.size(), momentMatrix.size());
+    for (int i=0; i<momentMatrix.size(); i++) {
+        for (int j=0; j<momentMatrix[i].size(); j++) {
+            for (int k=0; k<momentMatrix[i][j].size(); k++) {
+                for (int l=0; l<variables.size(); l++) {
+                    if (momentMatrix[i][j][k].second == variables[l]) {
+                        momentMatrixEigen(i, j) += varVals[l];
+                        break;
+                    }
+                }
+            }
+
+        }
+    }
+
+    // Output the new matrix
+    std::cout << "Moment matrix after replacement: " << std::endl;
+    std::cout << momentMatrixEigen << std::endl;
+
+    // Get the eigenvalues and vectors of this
+    Eigen::EigenSolver<Eigen::MatrixXd> es(momentMatrixEigen);
+    Eigen::MatrixXd eigenVectorsEigen = es.eigenvectors().real();
+    Eigen::VectorXd eigenValuesEigen = es.eigenvalues().real();
+
+    // Output the eigenvalues
+    std::cout << "Eigenvalues: " << std::endl;
+    std::cout << eigenValuesEigen.transpose() << std::endl;
+
+}
+
 // Generic entry function
 int main(int argc, char* argv[]) {
 
@@ -874,6 +912,58 @@ int main(int argc, char* argv[]) {
 
     // If testing TODO
     if (testing) {
+
+        std::vector<polynomialMatrix> toAdd;
+        for (int i=0; i<1; i++) {
+
+            std::vector<polynomialMatrix> momentMatricesNew;
+            toAdd = generateAllMomentMatrices(bellFunc, level, subLevel, 1);
+            momentMatricesNew.insert(momentMatricesNew.end(), toAdd.begin(), toAdd.end());
+
+            std::vector<monomial> variables;
+            std::vector<double> varVals;
+            double sol = solveMOSEK(objective, momentMatricesNew, constraintsZero, constraintsPositive, verbosity, variables, varVals);
+
+            std::vector<monomial> variablesOG;
+            addVariables(variablesOG, bellFunc);
+
+            // output of the optimisaiton
+            std::cout << "Solution: " << sol << std::endl;
+            for (int i=0; i<variables.size(); i++) {
+                std::cout << variables[i] << ": " << varVals[i] << std::endl;
+            }
+
+            // Get the eigenvalues and vectors of this moment matrix
+            std::vector<double> eigenvalues; 
+            std::vector<std::vector<double>> eigenvectors;
+            getEigens(momentMatricesNew[0], variables, varVals, eigenvectors, eigenvalues);
+
+            // Get the hyperplane tangent to the moment matrix TODO
+            // might need an optimisation for max dist from all constraints
+            polynomial newPosCon;
+            double conTerm = 0;
+            for (int i=0; i<variables.size(); i++) {
+                if (std::find(variablesOG.begin(), variablesOG.end(), variables[i]) != variablesOG.end()) {
+
+                    double objCoeff = 0;
+                    for (int j=0; j<objective.size(); j++) {
+                        if (objective[j].second == variables[i]) {
+                            objCoeff = objective[j].first;
+                            break;
+                        }
+                    }
+
+                    conTerm -= objCoeff * varVals[i];
+                    newPosCon.push_back(std::make_pair(objCoeff, variables[i]));
+
+                }
+            }
+
+            // output the new constraint
+            std::cout << "New constraint: " << newPosCon << std::endl;
+
+        }
+        return 0;
 
         // Add the known lower bound from seesawing as a constraint
         double knownLowerBound = 5.001;
