@@ -8,9 +8,6 @@
 // Import Eigen
 #include <Eigen/Dense>
 
-// Import MiniDNN
-#include <MiniDNN.h>
-
 // Define the type for the polynomials
 typedef std::vector<std::pair<char,int>> monomial;
 typedef std::vector<std::pair<double, monomial>> polynomial;
@@ -810,6 +807,119 @@ void getEigens(polynomialMatrix& momentMatrix, std::vector<monomial>& variables,
 
 }
 
+// Get the adjugate of a matrix
+Eigen::MatrixXd adjugate(const Eigen::MatrixXd& A) {
+
+    // Quite expensive, there might be a better way
+    int n = A.rows();
+    Eigen::MatrixXd adjugateMatrix(n, n);
+    for (int i=0; i<n; i++) {
+        for (int j=0; j<n; j++) {
+
+            // Calculate the (n-1)x(n-1) submatrix Mij
+            // Delete the empty rows so the determinant can be non zero
+            Eigen::MatrixXd submatrix = Eigen::MatrixXd::Zero(n-1, n-1);
+            int submatrixRow = 0;
+            for (int k=0; k<n; k++) {
+                if (k != i) {
+                    int submatrixCol = 0;
+                    for (int l=0; l<n; l++) {
+                        if (l != j) {
+                            submatrix(submatrixRow, submatrixCol) = A(k, l);
+                            submatrixCol++;
+                        }
+                    }
+                    submatrixRow++;
+                }
+            }
+
+            // Calculate the cofactor Cij
+            adjugateMatrix(j, i) = std::pow(-1, i + j) * submatrix.determinant();
+
+        }
+    }
+
+    return adjugateMatrix;
+
+}
+
+// Get the tangent plane to a moment matrix at this point TODO
+polynomial getTangentToMatrix(polynomialMatrix& momentMatrix, std::vector<monomial>& variables, std::vector<double>& varVals) {
+
+    // Output the matrix
+    std::cout << "Moment matrix: " << std::endl;
+    std::cout << momentMatrix << std::endl;
+
+    // Replace each variable with its value
+    Eigen::MatrixXd momentMatrixEigen = Eigen::MatrixXd::Zero(momentMatrix.size(), momentMatrix.size());
+    for (int i=0; i<momentMatrix.size(); i++) {
+        for (int j=0; j<momentMatrix[i].size(); j++) {
+            for (int k=0; k<momentMatrix[i][j].size(); k++) {
+                for (int l=0; l<variables.size(); l++) {
+                    if (momentMatrix[i][j][k].second == variables[l]) {
+                        momentMatrixEigen(i, j) += varVals[l];
+                        break;
+                    }
+                }
+            }
+
+        }
+    }
+
+    // Output the new matrix
+    std::cout << "Moment matrix after replacement: " << std::endl;
+    std::cout << momentMatrixEigen << std::endl;
+
+    // Get the determinant and adjugate of the matrix
+    double det = momentMatrixEigen.determinant();
+    Eigen::MatrixXd adjugateMatrix = adjugate(momentMatrixEigen);
+
+    // Output the eigenvalues
+    Eigen::EigenSolver<Eigen::MatrixXd> es(momentMatrixEigen);
+    Eigen::VectorXd eigenValuesEigen = es.eigenvalues().real();
+    std::cout << "Eigenvalues: " << std::endl;
+    std::cout << eigenValuesEigen.transpose() << std::endl;
+
+    // Output the determinant and adjugate
+    std::cout << "Determinant: " << det << std::endl;
+    std::cout << "Adjugate: " << std::endl;
+    std::cout << adjugateMatrix << std::endl;
+
+    // With respect to each variable
+    Eigen::VectorXd gradPerVar(variables.size());
+    for (int l=0; l<variables.size(); l++) {
+
+        // Get the derivative with respect to this variable
+        Eigen::MatrixXd derivativeMatrix = Eigen::MatrixXd::Zero(momentMatrix.size(), momentMatrix.size());
+        for (int i=0; i<momentMatrix.size(); i++) {
+            for (int j=0; j<momentMatrix[i].size(); j++) {
+                for (int k=0; k<momentMatrix[i][j].size(); k++) {
+                    if (momentMatrix[i][j][k].second == variables[l]) {
+                        derivativeMatrix(i, j) = 1;
+                    }
+                }
+
+            }
+        }
+
+        // Output the derivative matrix
+        std::cout << "Derivative matrix for variable " << l << ": " << std::endl;
+        std::cout << derivativeMatrix << std::endl;
+
+        // Use Jacobi's formula to get the derivative
+        gradPerVar[l] = (adjugateMatrix * derivativeMatrix).trace();
+
+    }
+
+    // Output the gradient
+    std::cout << "Gradient: " << std::endl;
+    std::cout << gradPerVar.transpose() << std::endl;
+
+    polynomial toReturn;
+    return toReturn;
+
+}
+
 // Generic entry function
 int main(int argc, char* argv[]) {
 
@@ -841,7 +951,7 @@ int main(int argc, char* argv[]) {
 
         // I3322 (level 1 should give 0.3333, level 2 0.25)
         // however for now it's l1 = 5.5, l2 = 5.00631, l3 = 5.00448
-        } else if (argAsString == "--i3322") {
+        } else if (argAsString == "--I3322") {
             bellFunc = stringToPolynomial("<A1>-<A2>+<B1>-<B2>-<A1B1>+<A1B2>+<A2B1>-<A2B2>+<A1B3>+<A2B3>+<A3B1>+<A3B2>");
 
         // Set the level
@@ -875,7 +985,7 @@ int main(int argc, char* argv[]) {
             std::cout << "  -a <num>        Number of outcomes for Alice" << std::endl;
             std::cout << "  -b <num>        Number of outcomes for Bob" << std::endl;
             std::cout << "  --chsh          Use the CHSH scenario" << std::endl;
-            std::cout << "  --i3322         Use the I3322 scenario" << std::endl;
+            std::cout << "  --I3322         Use the I3322 scenario" << std::endl;
             std::cout << "  -l <num>        Level of the moment matrix" << std::endl;
             std::cout << "  -s <num>        Sub-level of the moment matrix" << std::endl;
             std::cout << "  -n <num>        Number of moment matrices to sample" << std::endl;
@@ -913,192 +1023,26 @@ int main(int argc, char* argv[]) {
     // If testing TODO
     if (testing) {
 
-        std::vector<polynomialMatrix> toAdd;
         for (int i=0; i<1; i++) {
 
+            // Generate a random set of moment matrices
             std::vector<polynomialMatrix> momentMatricesNew;
-            toAdd = generateAllMomentMatrices(bellFunc, level, subLevel, 1);
-            momentMatricesNew.insert(momentMatricesNew.end(), toAdd.begin(), toAdd.end());
+            momentMatricesNew = generateAllMomentMatrices(bellFunc, level, subLevel, numToSample);
 
+            // Run the optimisation
             std::vector<monomial> variables;
             std::vector<double> varVals;
             double sol = solveMOSEK(objective, momentMatricesNew, constraintsZero, constraintsPositive, verbosity, variables, varVals);
 
-            std::vector<monomial> variablesOG;
-            addVariables(variablesOG, bellFunc);
-
-            // output of the optimisaiton
-            std::cout << "Solution: " << sol << std::endl;
-            for (int i=0; i<variables.size(); i++) {
-                std::cout << variables[i] << ": " << varVals[i] << std::endl;
-            }
-
-            // Get the eigenvalues and vectors of this moment matrix
-            std::vector<double> eigenvalues; 
-            std::vector<std::vector<double>> eigenvectors;
-            getEigens(momentMatricesNew[0], variables, varVals, eigenvectors, eigenvalues);
-
             // Get the hyperplane tangent to the moment matrix TODO
-            // might need an optimisation for max dist from all constraints
-            polynomial newPosCon;
-            double conTerm = 0;
-            for (int i=0; i<variables.size(); i++) {
-                if (std::find(variablesOG.begin(), variablesOG.end(), variables[i]) != variablesOG.end()) {
-
-                    double objCoeff = 0;
-                    for (int j=0; j<objective.size(); j++) {
-                        if (objective[j].second == variables[i]) {
-                            objCoeff = objective[j].first;
-                            break;
-                        }
-                    }
-
-                    conTerm -= objCoeff * varVals[i];
-                    newPosCon.push_back(std::make_pair(objCoeff, variables[i]));
-
-                }
-            }
+            polynomial newPosCon = getTangentToMatrix(momentMatricesNew[0], variables, varVals);
 
             // output the new constraint
             std::cout << "New constraint: " << newPosCon << std::endl;
 
         }
-        return 0;
-
-        // Add the known lower bound from seesawing as a constraint
-        double knownLowerBound = 5.001;
-        double knownUpperBound = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, 0);
-        std::cout << "Original upper bound: " << knownUpperBound << std::endl;
-        //double knownUpperBound = 5.005;
-        //double knownLowerBound = 5.00447;
-        //double knownUpperBound = 5.00448;
-
-        polynomial lowerBoundCon = objective;
-        lowerBoundCon.push_back(std::make_pair(-knownLowerBound, monomial()));
-        constraintsPositive.push_back(lowerBoundCon);
-
-        polynomial upperBoundCon = objective;
-        upperBoundCon.push_back(std::make_pair(-knownUpperBound, monomial()));
-        for (int i=0; i<upperBoundCon.size(); i++) {
-            upperBoundCon[i].first *= -1;
-        }
-        constraintsPositive.push_back(upperBoundCon);
-
-        std::vector<monomial> variablesToBound;
-        std::vector<std::pair<double,double>> bounds;
-        addVariables(variablesToBound, objective);
-
-        // For each monomial in the objective
-        for (int i=0; i<variablesToBound.size(); i++) {
-
-            monomial monomialToBound = variablesToBound[i];
-
-            // Find the min of <A1>
-            polynomial objectiveNew = {std::make_pair(1, monomialToBound)};
-            double maxBound = solveMOSEK(objectiveNew, momentMatrices, constraintsZero, constraintsPositive, 0);
-
-            // Find the max of <A1>
-            objectiveNew = {std::make_pair(-1, monomialToBound)};
-            double minBound = -solveMOSEK(objectiveNew, momentMatrices, constraintsZero, constraintsPositive, 0);
-
-            bounds.push_back(std::make_pair(minBound, maxBound));
-
-            std::cout << "Bound of "<< monomialToBound << " is [" << minBound << ", " << maxBound << "]" << std::endl;
-
-        }
-
-        // Add the bounds as linear constraints
-        for (int i=0; i<variablesToBound.size(); i++) {
-            monomial monomialToBound = variablesToBound[i];
-            polynomial newConUpper = {std::make_pair(1, monomialToBound), std::make_pair(-bounds[i].first, monomial())};
-            constraintsPositive.push_back(newConUpper);
-            polynomial newConLower = {std::make_pair(-1, monomialToBound), std::make_pair(bounds[i].second, monomial())};
-            constraintsPositive.push_back(newConLower);
-        }
-
-        // Now run with the bounds as linear constraints
-        double newUpperBound = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, 0);
-        std::cout << "New upper bound is " << newUpperBound << std::endl;
 
         return 0;
-
-        //std::vector<monomial> variables;
-        //std::vector<double> variableValues;
-        //double obj = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, 1, variables, variableValues);
-
-        //std::cout << "There are " << variables.size() << " variables" << std::endl;
-
-        //polynomialMatrix fullMatrix = momentMatrices[0];
-
-        //// The full matrix with the variables replaced by their values
-        //Eigen::MatrixXd fullMatrixEigen = Eigen::MatrixXd::Zero(fullMatrix.size(), fullMatrix.size());
-        //for (int i=0; i<fullMatrix.size(); i++) {
-            //for (int j=0; j<fullMatrix.size(); j++) {
-                //for (int k=0; k<variables.size(); k++) {
-                    //if (fullMatrix[i][j][0].second == variables[k]) {
-                        //fullMatrixEigen(i, j) = variableValues[k];
-                    //}
-                //}
-            //}
-        //}
-        //std::cout << fullMatrixEigen << std::endl;
-
-        //// See if the final moments can learnt by a nn
-        //int inputSize = 2;
-        //Eigen::MatrixXd inputs = Eigen::MatrixXd::Zero(inputSize, variables.size());
-        //Eigen::MatrixXd outputs = Eigen::MatrixXd::Zero(1, variables.size());
-        //for (int i=0; i<variables.size(); i++) {
-            //auto encoded = encodeMonomial(variables[i], fullMatrix);
-            //std::cout << "Encoded " << variables[i] << " as ";
-            //for (int j=0; j<encoded.size(); j++) {
-                //std::cout << encoded[j] << " ";
-                //inputs(j, i) = encoded[j];
-            //}
-            //std::cout << " = " << variableValues[i] << std::endl;
-            //outputs(0, i) = variableValues[i];
-        //}
-
-        //return 0;
-
-        //// Construct a network object
-        //MiniDNN::Network net;
-        //MiniDNN::Layer* layer1 = new MiniDNN::FullyConnected<MiniDNN::ReLU>(inputSize, 100);
-        //net.add_layer(layer1);
-        //MiniDNN::Layer* layer2 = new MiniDNN::FullyConnected<MiniDNN::ReLU>(100, 10);
-        //net.add_layer(layer2);
-        //MiniDNN::Layer* layer3 = new MiniDNN::FullyConnected<MiniDNN::Identity>(10, 1);
-        //net.add_layer(layer3);
-        //net.set_output(new MiniDNN::RegressionMSE());
-
-        //// Create optimizer object
-        //MiniDNN::RMSProp opt;
-        //opt.m_lrate = 0.001;
-        //MiniDNN::VerboseCallback callback;
-        //net.set_callback(callback);
-
-        //// Initialize parameters with N(0, 0.01^2) using random seed 123
-        //net.init(0, 0.01, 123);
-
-        //// Fit the model with a batch size of 100, running 10 epochs with random seed 123
-        //net.fit(opt, inputs, outputs, 100, 10, 123);
-
-        //// Compare the prediction with the ground truth
-        //Eigen::Matrix pred = net.predict(inputs);
-        //double mse = (pred - outputs).cwiseAbs().sum() / pred.cols();
-        //for (int i=0; i<10; i++) {
-            //std::cout << pred(0, i) << " " << outputs(0, i) << std::endl;
-        //}
-        //std::cout << "average error: " << mse << std::endl;
-
-        //// Get the total number of parameters
-        //auto params = net.get_parameters();
-        //int totalParams = 0;
-        //for (int i=0; i<params.size(); i++) {
-            //totalParams += params[i].size();
-        //}
-        //std::cout << "There are " << totalParams << " parameters" << std::endl;
-
-        //return 0;
 
     }
 
