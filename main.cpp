@@ -17,7 +17,7 @@ typedef std::vector<std::vector<polynomial>> polynomialMatrix;
 monomial stringToMonomial(std::string asString) {
 
     // If the string is empty, return an empty monomial
-    if (asString == "") {
+    if (asString == "" || asString.find("<") == std::string::npos) {
         return monomial();
     }
 
@@ -265,6 +265,7 @@ void combo(std::vector<int> &alphabet, int n, std::vector<std::vector<int>> &res
 
 // Sampled combinations of a vector
 void combo(std::vector<int> &alphabet, int n, std::vector<std::vector<int>> &result, int numToSample) {
+    int numFails = 0;
     while (result.size() < numToSample) {
         std::vector<int> curr;
         std::vector<int> alphabetCopy = alphabet;
@@ -276,6 +277,11 @@ void combo(std::vector<int> &alphabet, int n, std::vector<std::vector<int>> &res
         std::sort(curr.begin(), curr.end());
         if (std::find(result.begin(), result.end(), curr) == result.end()) {
             result.push_back(curr);
+        } else {
+            numFails++;
+            if (numFails > numToSample*2) {
+                break;
+            }
         }
     }
     return;
@@ -318,6 +324,38 @@ void addSingleMonomials(std::vector<monomial>& variables, polynomial functional)
         }
 
     }
+
+}
+
+// Generate a moment matrix given the top row
+polynomialMatrix generateFromTopRow(std::vector<monomial> monomsInTopRow) {
+
+    // Generate all combinations of the top row
+    polynomialMatrix matrixToReturn = std::vector<std::vector<polynomial>>(monomsInTopRow.size(), std::vector<polynomial>(monomsInTopRow.size()));
+    for (long unsigned int i=0; i<monomsInTopRow.size(); i++) {
+        for (long unsigned int j=i; j<monomsInTopRow.size(); j++) {
+
+            // Form the new moment
+            monomial newMoment;
+            for (long unsigned int k=0; k<monomsInTopRow[i].size(); k++) {
+                newMoment.push_back(monomsInTopRow[i][k]);
+            }
+            for (int k=int(monomsInTopRow[j].size())-1; k>=0; k--) {
+                newMoment.push_back(monomsInTopRow[j][k]);
+            }
+
+            // Reduce the monomial
+            newMoment = reduceMonomial(newMoment);
+
+            // Set the matrix element
+            matrixToReturn[i][j] = polynomial(1, std::make_pair(1, newMoment));
+            matrixToReturn[j][i] = polynomial(1, std::make_pair(1, newMoment));
+
+        }
+    }
+
+    // Return the matrix
+    return matrixToReturn;
 
 }
 
@@ -422,8 +460,6 @@ std::vector<polynomialMatrix> generateAllMomentMatrices(polynomial functional, i
         combo(indices, subLevel-1, combinations, numToSample);
     }
 
-    // Only allow combinations which are reasonably different TODO
-
     // Each moment mat should start with 1
     monomsInTopRow.insert(monomsInTopRow.begin(), monomial());
     for (long unsigned int i=0; i<combinations.size(); i++) {
@@ -441,29 +477,8 @@ std::vector<polynomialMatrix> generateAllMomentMatrices(polynomial functional, i
         }
 
         // Form that matrix
-        polynomialMatrix matrixToReturn = std::vector<std::vector<polynomial>>(monomsInTopRowComb.size(), std::vector<polynomial>(monomsInTopRowComb.size()));
-        for (long unsigned int i=0; i<monomsInTopRowComb.size(); i++) {
-            for (long unsigned int j=i; j<monomsInTopRowComb.size(); j++) {
-
-                // Form the new moment
-                monomial newMoment;
-                for (long unsigned int k=0; k<monomsInTopRowComb[i].size(); k++) {
-                    newMoment.push_back(monomsInTopRowComb[i][k]);
-                }
-                for (int k=int(monomsInTopRowComb[j].size())-1; k>=0; k--) {
-                    newMoment.push_back(monomsInTopRowComb[j][k]);
-                }
-
-                // Reduce the monomial
-                newMoment = reduceMonomial(newMoment);
-
-                // Set the matrix element
-                matrixToReturn[i][j] = polynomial(1, std::make_pair(1, newMoment));
-                matrixToReturn[j][i] = polynomial(1, std::make_pair(1, newMoment));
-
-            }
-        }
-        matricesToReturn.push_back(matrixToReturn);
+        polynomialMatrix newMatrix = generateFromTopRow(monomsInTopRowComb);
+        matricesToReturn.push_back(newMatrix);
 
     }
 
@@ -471,6 +486,7 @@ std::vector<polynomialMatrix> generateAllMomentMatrices(polynomial functional, i
     return matricesToReturn;
 
 }
+
 // Add variables from a moment matrix
 void addVariables(std::vector<monomial>& variables, polynomialMatrix toAdd) {
 
@@ -1023,22 +1039,43 @@ int main(int argc, char* argv[]) {
     // If testing TODO
     if (testing) {
 
-        for (int i=0; i<1; i++) {
+        for (int i=0; i<1000; i++) {
 
             // Generate a random set of moment matrices
             std::vector<polynomialMatrix> momentMatricesNew;
             momentMatricesNew = generateAllMomentMatrices(bellFunc, level, subLevel, numToSample);
 
+            // Get the list of all monomials
+            std::vector<monomial> totalMonomials;
+            addVariables(totalMonomials, objective);
+            for (int i=0; i<momentMatricesNew.size(); i++) {
+                addVariables(totalMonomials, momentMatricesNew[i]);
+            }
+
+            // Randomise the objective
+            polynomial objectiveNew;
+            for (int i=0; i<totalMonomials.size(); i++) {
+                objectiveNew.push_back(std::make_pair((double)rand() / RAND_MAX, totalMonomials[i]));
+            }
+
             // Run the optimisation
             std::vector<monomial> variables;
             std::vector<double> varVals;
-            double sol = solveMOSEK(objective, momentMatricesNew, constraintsZero, constraintsPositive, verbosity, variables, varVals);
-
-            // Get the hyperplane tangent to the moment matrix TODO
-            polynomial newPosCon = getTangentToMatrix(momentMatricesNew[0], variables, varVals);
+            double sol = solveMOSEK(objectiveNew, momentMatricesNew, constraintsZero, constraintsPositive, verbosity-1, variables, varVals);
 
             // output the new constraint
-            std::cout << "New constraint: " << newPosCon << std::endl;
+            polynomial newPosCon = objectiveNew;
+            newPosCon.push_back(std::make_pair(-sol, monomial()));
+            for (int i=0; i<newPosCon.size(); i++) {
+                newPosCon[i].first = -newPosCon[i].first;
+            }
+            constraintsPositive.push_back(newPosCon);
+
+            // Now see how the standard objective has changed
+            momentMatricesNew = {};
+            double sol2 = solveMOSEK(objective, momentMatricesNew, constraintsZero, constraintsPositive, verbosity, variables, varVals);
+            std::cout << "Num pos constraints: " << constraintsPositive.size() << std::endl;
+            std::cout << "Standard objective: " << sol2 << std::endl;
 
         }
 
