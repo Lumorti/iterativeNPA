@@ -214,6 +214,44 @@ polynomial stringToPolynomial(std::string asString) {
 
 }
 
+// Get the eigenvalues and vectors of a matrix after replacement
+void getEigens(polynomialMatrix& momentMatrix, std::vector<monomial>& variables, std::vector<double>& varVals, std::vector<std::vector<double>>& eigenvectors, std::vector<double>& eigenvalues) {
+
+    // Replace each variable with its value
+    Eigen::MatrixXd momentMatrixEigen = Eigen::MatrixXd::Zero(momentMatrix.size(), momentMatrix.size());
+    for (int i=0; i<momentMatrix.size(); i++) {
+        for (int j=0; j<momentMatrix[i].size(); j++) {
+            for (int k=0; k<momentMatrix[i][j].size(); k++) {
+                for (int l=0; l<variables.size(); l++) {
+                    if (momentMatrix[i][j][k].second == variables[l]) {
+                        momentMatrixEigen(i, j) += varVals[l];
+                        break;
+                    }
+                }
+            }
+
+        }
+    }
+
+    // Get the eigenvalues and vectors of this
+    Eigen::EigenSolver<Eigen::MatrixXd> es(momentMatrixEigen);
+    Eigen::MatrixXd eigenVectorsEigen = es.eigenvectors().real();
+    Eigen::VectorXd eigenValuesEigen = es.eigenvalues().real();
+
+    // Copy into the output vectors
+    for (int i=0; i<eigenVectorsEigen.cols(); i++) {
+        std::vector<double> eigenVector;
+        for (int j=0; j<eigenVectorsEigen.rows(); j++) {
+            eigenVector.push_back(eigenVectorsEigen(j, i));
+        }
+        eigenvectors.push_back(eigenVector);
+    }
+    for (int i=0; i<eigenValuesEigen.size(); i++) {
+        eigenvalues.push_back(eigenValuesEigen(i));
+    }
+
+}
+
 // Given a monomila, reduce it to its simplest form
 monomial reduceMonomial(monomial mon_) {
 
@@ -379,7 +417,7 @@ std::vector<polynomialMatrix> generateAllMomentMatrices(polynomial functional, i
     }
     if (level >= 2) {
         for (long unsigned int i=0; i<variables.size(); i++) {
-            for (long unsigned int j=i; j<variables.size(); j++) {
+            for (long unsigned int j=0; j<variables.size(); j++) {
                 monomial currentMonomial = {variables[i][0], variables[j][0]};
                 currentMonomial = reduceMonomial(currentMonomial);
                 if (currentMonomial.size() > 0 && std::find(monomsInTopRow.begin(), monomsInTopRow.end(), currentMonomial) == monomsInTopRow.end()) {
@@ -390,8 +428,8 @@ std::vector<polynomialMatrix> generateAllMomentMatrices(polynomial functional, i
     }
     if (level >= 3) {
         for (long unsigned int i=0; i<variables.size(); i++) {
-            for (long unsigned int j=i; j<variables.size(); j++) {
-                for (long unsigned int k=j; k<variables.size(); k++) {
+            for (long unsigned int j=0; j<variables.size(); j++) {
+                for (long unsigned int k=0; k<variables.size(); k++) {
                     monomial currentMonomial = {variables[i][0], variables[j][0], variables[k][0]};
                     currentMonomial = reduceMonomial(currentMonomial);
                     if (currentMonomial.size() > 0 && std::find(monomsInTopRow.begin(), monomsInTopRow.end(), currentMonomial) == monomsInTopRow.end()) {
@@ -403,9 +441,9 @@ std::vector<polynomialMatrix> generateAllMomentMatrices(polynomial functional, i
     }
     if (level >= 4) {
         for (long unsigned int i=0; i<variables.size(); i++) {
-            for (long unsigned int j=i; j<variables.size(); j++) {
-                for (long unsigned int k=j; k<variables.size(); k++) {
-                    for (long unsigned int l=k; l<variables.size(); l++) {
+            for (long unsigned int j=0; j<variables.size(); j++) {
+                for (long unsigned int k=0; k<variables.size(); k++) {
+                    for (long unsigned int l=0; l<variables.size(); l++) {
                         monomial currentMonomial = {variables[i][0], variables[j][0], variables[k][0], variables[l][0]};
                         currentMonomial = reduceMonomial(currentMonomial);
                         if (currentMonomial.size() > 0 && std::find(monomsInTopRow.begin(), monomsInTopRow.end(), currentMonomial) == monomsInTopRow.end()) {
@@ -418,14 +456,54 @@ std::vector<polynomialMatrix> generateAllMomentMatrices(polynomial functional, i
     }
     if (level >= 5) {
         for (long unsigned int i=0; i<variables.size(); i++) {
-            for (long unsigned int j=i; j<variables.size(); j++) {
-                for (long unsigned int k=j; k<variables.size(); k++) {
-                    for (long unsigned int l=k; l<variables.size(); l++) {
-                        for (long unsigned int m=l; m<variables.size(); m++) {
+            for (long unsigned int j=0; j<variables.size(); j++) {
+                for (long unsigned int k=0; k<variables.size(); k++) {
+                    for (long unsigned int l=0; l<variables.size(); l++) {
+                        for (long unsigned int m=0; m<variables.size(); m++) {
                             monomial currentMonomial = {variables[i][0], variables[j][0], variables[k][0], variables[l][0], variables[m][0]};
                             currentMonomial = reduceMonomial(currentMonomial);
                             if (currentMonomial.size() > 0 && std::find(monomsInTopRow.begin(), monomsInTopRow.end(), currentMonomial) == monomsInTopRow.end()) {
                                 monomsInTopRow.push_back(currentMonomial);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if (level >= 6) {
+        for (long unsigned int i=0; i<variables.size(); i++) {
+            for (long unsigned int j=0; j<variables.size(); j++) {
+                for (long unsigned int k=0; k<variables.size(); k++) {
+                    for (long unsigned int l=0; l<variables.size(); l++) {
+                        for (long unsigned int m=0; m<variables.size(); m++) {
+                            for (long unsigned int n=0; n<variables.size(); n++) {
+                                monomial currentMonomial = {variables[i][0], variables[j][0], variables[k][0], variables[l][0], variables[m][0], variables[n][0]};
+                                currentMonomial = reduceMonomial(currentMonomial);
+                                if (currentMonomial.size() > 0 && std::find(monomsInTopRow.begin(), monomsInTopRow.end(), currentMonomial) == monomsInTopRow.end()) {
+                                    monomsInTopRow.push_back(currentMonomial);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if  (level >= 7) {
+        for (long unsigned int i=0; i<variables.size(); i++) {
+            for (long unsigned int j=0; j<variables.size(); j++) {
+                for (long unsigned int k=0; k<variables.size(); k++) {
+                    for (long unsigned int l=0; l<variables.size(); l++) {
+                        for (long unsigned int m=0; m<variables.size(); m++) {
+                            for (long unsigned int n=0; n<variables.size(); n++) {
+                                for (long unsigned int o=0; o<variables.size(); o++) {
+                                    monomial currentMonomial = {variables[i][0], variables[j][0], variables[k][0], variables[l][0], variables[m][0], variables[n][0], variables[o][0]};
+                                    currentMonomial = reduceMonomial(currentMonomial);
+                                    if (currentMonomial.size() > 0 && std::find(monomsInTopRow.begin(), monomsInTopRow.end(), currentMonomial) == monomsInTopRow.end()) {
+                                        monomsInTopRow.push_back(currentMonomial);
+                                    }
+                                }
                             }
                         }
                     }
@@ -709,6 +787,15 @@ double solveMOSEK(polynomial obj, std::vector<polynomialMatrix>& psd, std::vecto
         variableValues[i] = xMLevel[i];
     }
 
+    // Check the eigenvalues of each moment matrix
+    for (int i=0; i<psd.size(); i++) {
+        std::vector<std::vector<double>> eigenvectors;
+        std::vector<double> eigenvalues;
+        getEigens(psd[i], variables, variableValues, eigenvectors, eigenvalues);
+        std::sort(eigenvalues.begin(), eigenvalues.end());
+        std::cout << "Min eigenvalue: " << eigenvalues[0] << std::endl;
+    }
+
     // If superverbose, output all monomials
     if (verbosity >= 3) {
         std::cout << "Solution: " << std::endl;
@@ -785,44 +872,6 @@ std::vector<double> encodeMonomial(monomial m, polynomialMatrix& mat) {
 
 }
 
-// Get the eigenvalues and vectors of a matrix after replacement
-void getEigens(polynomialMatrix& momentMatrix, std::vector<monomial>& variables, std::vector<double>& varVals, std::vector<std::vector<double>>& eigenvectors, std::vector<double>& eigenvalues) {
-
-    // Output the matrix
-    std::cout << "Moment matrix: " << std::endl;
-    std::cout << momentMatrix << std::endl;
-
-    // Replace each variable with its value
-    Eigen::MatrixXd momentMatrixEigen = Eigen::MatrixXd::Zero(momentMatrix.size(), momentMatrix.size());
-    for (int i=0; i<momentMatrix.size(); i++) {
-        for (int j=0; j<momentMatrix[i].size(); j++) {
-            for (int k=0; k<momentMatrix[i][j].size(); k++) {
-                for (int l=0; l<variables.size(); l++) {
-                    if (momentMatrix[i][j][k].second == variables[l]) {
-                        momentMatrixEigen(i, j) += varVals[l];
-                        break;
-                    }
-                }
-            }
-
-        }
-    }
-
-    // Output the new matrix
-    std::cout << "Moment matrix after replacement: " << std::endl;
-    std::cout << momentMatrixEigen << std::endl;
-
-    // Get the eigenvalues and vectors of this
-    Eigen::EigenSolver<Eigen::MatrixXd> es(momentMatrixEigen);
-    Eigen::MatrixXd eigenVectorsEigen = es.eigenvectors().real();
-    Eigen::VectorXd eigenValuesEigen = es.eigenvalues().real();
-
-    // Output the eigenvalues
-    std::cout << "Eigenvalues: " << std::endl;
-    std::cout << eigenValuesEigen.transpose() << std::endl;
-
-}
-
 // Get the adjugate of a matrix
 Eigen::MatrixXd adjugate(const Eigen::MatrixXd& A) {
 
@@ -859,83 +908,6 @@ Eigen::MatrixXd adjugate(const Eigen::MatrixXd& A) {
 
 }
 
-// Get the tangent plane to a moment matrix at this point TODO
-polynomial getTangentToMatrix(polynomialMatrix& momentMatrix, std::vector<monomial>& variables, std::vector<double>& varVals) {
-
-    // Output the matrix
-    std::cout << "Moment matrix: " << std::endl;
-    std::cout << momentMatrix << std::endl;
-
-    // Replace each variable with its value
-    Eigen::MatrixXd momentMatrixEigen = Eigen::MatrixXd::Zero(momentMatrix.size(), momentMatrix.size());
-    for (int i=0; i<momentMatrix.size(); i++) {
-        for (int j=0; j<momentMatrix[i].size(); j++) {
-            for (int k=0; k<momentMatrix[i][j].size(); k++) {
-                for (int l=0; l<variables.size(); l++) {
-                    if (momentMatrix[i][j][k].second == variables[l]) {
-                        momentMatrixEigen(i, j) += varVals[l];
-                        break;
-                    }
-                }
-            }
-
-        }
-    }
-
-    // Output the new matrix
-    std::cout << "Moment matrix after replacement: " << std::endl;
-    std::cout << momentMatrixEigen << std::endl;
-
-    // Get the determinant and adjugate of the matrix
-    double det = momentMatrixEigen.determinant();
-    Eigen::MatrixXd adjugateMatrix = adjugate(momentMatrixEigen);
-
-    // Output the eigenvalues
-    Eigen::EigenSolver<Eigen::MatrixXd> es(momentMatrixEigen);
-    Eigen::VectorXd eigenValuesEigen = es.eigenvalues().real();
-    std::cout << "Eigenvalues: " << std::endl;
-    std::cout << eigenValuesEigen.transpose() << std::endl;
-
-    // Output the determinant and adjugate
-    std::cout << "Determinant: " << det << std::endl;
-    std::cout << "Adjugate: " << std::endl;
-    std::cout << adjugateMatrix << std::endl;
-
-    // With respect to each variable
-    Eigen::VectorXd gradPerVar(variables.size());
-    for (int l=0; l<variables.size(); l++) {
-
-        // Get the derivative with respect to this variable
-        Eigen::MatrixXd derivativeMatrix = Eigen::MatrixXd::Zero(momentMatrix.size(), momentMatrix.size());
-        for (int i=0; i<momentMatrix.size(); i++) {
-            for (int j=0; j<momentMatrix[i].size(); j++) {
-                for (int k=0; k<momentMatrix[i][j].size(); k++) {
-                    if (momentMatrix[i][j][k].second == variables[l]) {
-                        derivativeMatrix(i, j) = 1;
-                    }
-                }
-
-            }
-        }
-
-        // Output the derivative matrix
-        std::cout << "Derivative matrix for variable " << l << ": " << std::endl;
-        std::cout << derivativeMatrix << std::endl;
-
-        // Use Jacobi's formula to get the derivative
-        gradPerVar[l] = (adjugateMatrix * derivativeMatrix).trace();
-
-    }
-
-    // Output the gradient
-    std::cout << "Gradient: " << std::endl;
-    std::cout << gradPerVar.transpose() << std::endl;
-
-    polynomial toReturn;
-    return toReturn;
-
-}
-
 // Generic entry function
 int main(int argc, char* argv[]) {
 
@@ -948,6 +920,7 @@ int main(int argc, char* argv[]) {
     bool testing = false;
     int numToSample = 1000;
     int verbosity = 1;
+    int maxIters = 1000;
 
     // Process command-line args
     for (int i=1; i<argc; i++) {
@@ -965,14 +938,23 @@ int main(int argc, char* argv[]) {
         } else if (argAsString == "--chsh") {
             bellFunc = stringToPolynomial("<A1B1>+<A1B2>+<A2B1>-<A2B2>");
 
-        // I3322 (level 1 should give 0.3333, level 2 0.25)
-        // however for now it's l1 = 5.5, l2 = 5.00631, l3 = 5.00448
+        // I3322
+        // however for now it's l1 = 5.5, l2 = 5.00631, l3 (88= 5.0035, l4 = 
+        // l1 (7x7) = 5.5
+        // l2 (28x28) = 5.00612
+        // l3 (88x88) = 5.0035
+        // l4 (244x244) = 5.0035
         } else if (argAsString == "--I3322") {
             bellFunc = stringToPolynomial("<A1>-<A2>+<B1>-<B2>-<A1B1>+<A1B2>+<A2B1>-<A2B2>+<A1B3>+<A2B3>+<A3B1>+<A3B2>");
 
         // Set the level
         } else if (argAsString == "-l") {
             level = std::stoi(argv[i+1]);
+            i++;
+
+        // Set the iteration limit
+        } else if (argAsString == "-i") {
+            maxIters = std::stoi(argv[i+1]);
             i++;
 
         // Set the sub level
@@ -1004,6 +986,7 @@ int main(int argc, char* argv[]) {
             std::cout << "  --I3322         Use the I3322 scenario" << std::endl;
             std::cout << "  -l <num>        Level of the moment matrix" << std::endl;
             std::cout << "  -s <num>        Sub-level of the moment matrix" << std::endl;
+            std::cout << "  -i <num>        Iteration limit" << std::endl;
             std::cout << "  -n <num>        Number of moment matrices to sample" << std::endl;
             std::cout << "  -v <num>        Verbosity level" << std::endl;
             std::cout << "  -t              Test the moment matrix" << std::endl;
@@ -1039,44 +1022,116 @@ int main(int argc, char* argv[]) {
     // If testing TODO
     if (testing) {
 
-        for (int i=0; i<1000; i++) {
+        // Generate a random set of moment matrices
+        std::vector<polynomialMatrix> momentMatricesNew;
+        momentMatricesNew = generateAllMomentMatrices(bellFunc, level, subLevel, numToSample);
 
-            // Generate a random set of moment matrices
-            std::vector<polynomialMatrix> momentMatricesNew;
-            momentMatricesNew = generateAllMomentMatrices(bellFunc, level, subLevel, numToSample);
+        // Output the final moment matrices
+        for (int i=0; i<momentMatricesNew.size(); i++) {
+            std::cout << "Moment matrix " << i << ": " << std::endl;
+            std::cout << momentMatricesNew[i] << std::endl << std::endl;
+        }
 
-            // Get the list of all monomials
-            std::vector<monomial> totalMonomials;
-            addVariables(totalMonomials, objective);
+        // Run the optimisation
+        std::vector<monomial> variables;
+        std::vector<double> varVals;
+        double sol = solveMOSEK(objective, momentMatricesNew, constraintsZero, constraintsPositive, verbosity, variables, varVals);
+
+        for (int i=0; i<maxIters; i++) {
+
+            // Pick the smallest moment matrix
+            int chosenMatrix = 0;
+            std::vector<double> matrixProbabilities(momentMatricesNew.size());
+            double totalMatrixProb = 0;
+            for (int j=0; j<momentMatricesNew.size(); j++) {
+                matrixProbabilities[j] = 1.0 / std::pow(momentMatricesNew[j].size(), 2);
+                totalMatrixProb += matrixProbabilities[j];
+            }
+            for (int j=0; j<momentMatricesNew.size(); j++) {
+                matrixProbabilities[j] /= totalMatrixProb;
+            }
+            double randNum = (double)rand() / RAND_MAX;
+            double cumulativeProbMatrix = 0;
+            for (int j=0; j<momentMatricesNew.size(); j++) {
+                cumulativeProbMatrix += matrixProbabilities[j];
+                if (randNum < cumulativeProbMatrix) {
+                    chosenMatrix = j;
+                    break;
+                }
+            }
+
+            // Get the top row of the moment matrix
+            std::vector<monomial> topRow(momentMatricesNew[chosenMatrix].size());
+            for (int j=0; j<momentMatricesNew[chosenMatrix].size(); j++) {
+                topRow[j] = momentMatricesNew[chosenMatrix][0][j][0].second;
+            }
+
+            // Pick a random monomial that isn't in the top row
+            std::vector<double> probPerMonomial(variables.size());
+            double totalProb = 0;
+            for (int j=0; j<variables.size(); j++) {
+                if (variables[j].size() == 0) {
+                    probPerMonomial[j] = 0;
+                } else if (std::find(topRow.begin(), topRow.end(), variables[j]) != topRow.end()) {
+                    probPerMonomial[j] = 0;
+                } else {
+                    probPerMonomial[j] = 1.0 / std::pow(variables[j].size(), 2);
+                }
+                totalProb += probPerMonomial[j];
+            }
+            for (int j=0; j<variables.size(); j++) {
+                probPerMonomial[j] /= totalProb;
+            }
+            double randomVal = (double)rand() / RAND_MAX;
+            double cumulativeProb = 0;
+            int randomMonomial = variables.size()-1;
+            for (int j=0; j<variables.size(); j++) {
+                cumulativeProb += probPerMonomial[j];
+                if (randomVal < cumulativeProb) {
+                    randomMonomial = j;
+                    break;
+                }
+            }
+            topRow.push_back(variables[randomMonomial]);
+
+            // Add the monomial to the moment matrix
+            polynomialMatrix oldMomentMatrix = momentMatricesNew[chosenMatrix];
+            momentMatricesNew[chosenMatrix] = generateFromTopRow(topRow);
+
+            std::cout << "adding monomial " << variables[randomMonomial] << " to moment matrix " << chosenMatrix << std::endl;
+
+            // Run the optimisation again to see if this helps
+            double solNew = solveMOSEK(objective, momentMatricesNew, constraintsZero, constraintsPositive, verbosity, variables, varVals);
+            if (solNew < sol) {
+                sol = solNew;
+            } else {
+                momentMatricesNew[chosenMatrix] = oldMomentMatrix;
+            }
+
+            // Stats about the moment matrix sizes
+            int largest = 0;
+            int smallest = 10000;
+            int avg = 0;
+            int total = 0;
+            int totalSqr = 0;
             for (int i=0; i<momentMatricesNew.size(); i++) {
-                addVariables(totalMonomials, momentMatricesNew[i]);
+                if (momentMatricesNew[i].size() > largest) {
+                    largest = momentMatricesNew[i].size();
+                }
+                if (momentMatricesNew[i].size() < smallest) {
+                    smallest = momentMatricesNew[i].size();
+                }
+                total += momentMatricesNew[i].size();
+                totalSqr += momentMatricesNew[i].size() * momentMatricesNew[i].size();
             }
+            std::cout << "best= " << sol << "  new=" << solNew << "  mats=" << momentMatricesNew.size() << "  max=" << largest << "  min=" << smallest <<  "  tot=" << total << "  sqr=" << totalSqr << std::endl;
 
-            // Randomise the objective
-            polynomial objectiveNew;
-            for (int i=0; i<totalMonomials.size(); i++) {
-                objectiveNew.push_back(std::make_pair((double)rand() / RAND_MAX, totalMonomials[i]));
-            }
+        }
 
-            // Run the optimisation
-            std::vector<monomial> variables;
-            std::vector<double> varVals;
-            double sol = solveMOSEK(objectiveNew, momentMatricesNew, constraintsZero, constraintsPositive, verbosity-1, variables, varVals);
-
-            // output the new constraint
-            polynomial newPosCon = objectiveNew;
-            newPosCon.push_back(std::make_pair(-sol, monomial()));
-            for (int i=0; i<newPosCon.size(); i++) {
-                newPosCon[i].first = -newPosCon[i].first;
-            }
-            constraintsPositive.push_back(newPosCon);
-
-            // Now see how the standard objective has changed
-            momentMatricesNew = {};
-            double sol2 = solveMOSEK(objective, momentMatricesNew, constraintsZero, constraintsPositive, verbosity, variables, varVals);
-            std::cout << "Num pos constraints: " << constraintsPositive.size() << std::endl;
-            std::cout << "Standard objective: " << sol2 << std::endl;
-
+        // Output the final moment matrices
+        for (int i=0; i<momentMatricesNew.size(); i++) {
+            std::cout << "Moment matrix " << i << ": " << std::endl;
+            std::cout << momentMatricesNew[i] << std::endl << std::endl;
         }
 
         return 0;
