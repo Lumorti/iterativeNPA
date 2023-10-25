@@ -214,24 +214,38 @@ polynomial stringToPolynomial(std::string asString) {
 
 }
 
-// Get the eigenvalues and vectors of a matrix after replacement
-void getEigens(polynomialMatrix& momentMatrix, std::vector<monomial>& variables, std::vector<double>& varVals, std::vector<std::vector<double>>& eigenvectors, std::vector<double>& eigenvalues) {
+// Given a matrix and a variable list, return the matrix with the variables replaced
+Eigen::MatrixXd replaceVariables(polynomialMatrix& momentMatrix, std::vector<monomial>& variables, std::vector<double>& varVals) {
 
     // Replace each variable with its value
     Eigen::MatrixXd momentMatrixEigen = Eigen::MatrixXd::Zero(momentMatrix.size(), momentMatrix.size());
     for (int i=0; i<momentMatrix.size(); i++) {
         for (int j=0; j<momentMatrix[i].size(); j++) {
             for (int k=0; k<momentMatrix[i][j].size(); k++) {
+
+                // Find this variable
+                bool found = false;
                 for (int l=0; l<variables.size(); l++) {
                     if (momentMatrix[i][j][k].second == variables[l]) {
-                        momentMatrixEigen(i, j) += varVals[l];
+                        momentMatrixEigen(i, j) += momentMatrix[i][j][k].first*varVals[l];
+                        found = true;
                         break;
                     }
                 }
+
             }
 
         }
     }
+    return momentMatrixEigen;
+
+}
+
+// Get the eigenvalues and vectors of a matrix after replacement
+void getEigens(polynomialMatrix& momentMatrix, std::vector<monomial>& variables, std::vector<double>& varVals, std::vector<std::vector<double>>& eigenvectors, std::vector<double>& eigenvalues) {
+
+    // Replace each variable with its value
+    Eigen::MatrixXd momentMatrixEigen = replaceVariables(momentMatrix, variables, varVals);
 
     // Get the eigenvalues and vectors of this
     Eigen::EigenSolver<Eigen::MatrixXd> es(momentMatrixEigen);
@@ -822,6 +836,12 @@ double solveMOSEK(polynomial obj, std::vector<polynomialMatrix>& psd, std::vecto
         }
         std::cout << "There are " << uniqueValues.size() << " unique values." << std::endl;
 
+        Eigen::MatrixXd A = replaceVariables(psd[0], variables, variableValues);
+        std::cout << "Moment matrix:" << std::endl;
+        std::cout << psd[0] << std::endl;
+        std::cout << "Moment matrix with vars replaced:" << std::endl;
+        std::cout << A << std::endl;
+
     // If verbose, just output monomials that are in the objective
     } else if (verbosity >= 2) {
         std::cout << "Solution: " << std::endl;
@@ -835,7 +855,7 @@ double solveMOSEK(polynomial obj, std::vector<polynomialMatrix>& psd, std::vecto
                 }
             }
         }
-    }
+    } 
 
     // Return the objective
     return objPrimal;
@@ -921,6 +941,7 @@ int main(int argc, char* argv[]) {
     int numToSample = 1000;
     int verbosity = 1;
     int maxIters = 1000;
+    std::string seed = "";
 
     // Process command-line args
     for (int i=1; i<argc; i++) {
@@ -957,6 +978,11 @@ int main(int argc, char* argv[]) {
             maxIters = std::stoi(argv[i+1]);
             i++;
 
+        // Set the seed
+        } else if (argAsString == "-S") {
+            seed = std::string(argv[i+1]);
+            i++;
+
         // Set the sub level
         } else if (argAsString == "-s") {
             subLevel = std::stoi(argv[i+1]);
@@ -988,6 +1014,7 @@ int main(int argc, char* argv[]) {
             std::cout << "  -s <num>        Sub-level of the moment matrix" << std::endl;
             std::cout << "  -i <num>        Iteration limit" << std::endl;
             std::cout << "  -n <num>        Number of moment matrices to sample" << std::endl;
+            std::cout << "  -S <str>        Seed for the random number generator" << std::endl;
             std::cout << "  -v <num>        Verbosity level" << std::endl;
             std::cout << "  -t              Test the moment matrix" << std::endl;
             return 0;
@@ -1000,8 +1027,14 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    // If the seed isn't set
+    if (seed == "") {
+        srand(time(NULL));
+    } else {
+        srand(std::stoi(seed));
+    }
+
     // Define the moment matrix
-    srand(time(NULL));
     std::vector<polynomialMatrix> momentMatrices = generateAllMomentMatrices(bellFunc, level, subLevel, numToSample);
     if (verbosity >= 1) {
         std::cout << "Generated " << momentMatrices.size() << " moment matrices" << std::endl;
@@ -1039,73 +1072,88 @@ int main(int argc, char* argv[]) {
 
         for (int i=0; i<maxIters; i++) {
 
-            // Pick the smallest moment matrix
-            int chosenMatrix = 0;
-            std::vector<double> matrixProbabilities(momentMatricesNew.size());
-            double totalMatrixProb = 0;
-            for (int j=0; j<momentMatricesNew.size(); j++) {
-                matrixProbabilities[j] = 1.0 / std::pow(momentMatricesNew[j].size(), 2);
-                totalMatrixProb += matrixProbabilities[j];
-            }
-            for (int j=0; j<momentMatricesNew.size(); j++) {
-                matrixProbabilities[j] /= totalMatrixProb;
-            }
-            double randNum = (double)rand() / RAND_MAX;
-            double cumulativeProbMatrix = 0;
-            for (int j=0; j<momentMatricesNew.size(); j++) {
-                cumulativeProbMatrix += matrixProbabilities[j];
-                if (randNum < cumulativeProbMatrix) {
-                    chosenMatrix = j;
-                    break;
+            // Try to find the best
+            int bestMatrix = 0;
+            double bestMinEigenvalue = 10000;
+            int bestMonomial = 0;
+
+            // For each moment matrix
+            for (int chosenMatrix=0; chosenMatrix<momentMatricesNew.size(); chosenMatrix++) {
+
+                // For each monomials that could be added
+                for (int chosenMonomial=0; chosenMonomial<variables.size(); chosenMonomial++) {
+
+                    // If the chosen monomial is less than a given size
+                    if (variables[chosenMonomial].size() > 3) {
+                        continue;
+                    }
+
+                    // Get the top row of the moment matrix
+                    std::vector<monomial> topRow(momentMatricesNew[chosenMatrix].size());
+                    for (int j=0; j<momentMatricesNew[chosenMatrix].size(); j++) {
+                        topRow[j] = momentMatricesNew[chosenMatrix][0][j][0].second;
+                    }
+
+                    // If the monomial is already in the top row, skip
+                    if (std::find(topRow.begin(), topRow.end(), variables[chosenMonomial]) != topRow.end()) {
+                        continue;
+                    }
+
+                    // Add the monomial to the moment matrix
+                    topRow.push_back(variables[chosenMonomial]);
+                    polynomialMatrix newMat = generateFromTopRow(topRow);
+
+                    // Check the eigenvalues of this new mat
+                    std::vector<double> eigenvalues;
+                    std::vector<std::vector<double>> eigenvectors;
+                    getEigens(newMat, variables, varVals, eigenvectors, eigenvalues);
+
+                    // Get the minimum eigenvalue
+                    double minEigenvalue = 1000000;
+                    for (int j=0; j<eigenvalues.size(); j++) {
+                        if (eigenvalues[j] < minEigenvalue) {
+                            minEigenvalue = eigenvalues[j];
+                        }
+                    }
+                    minEigenvalue /= std::pow(newMat.size(), 2);
+
+                    std::cout << chosenMatrix << " " << variables[chosenMonomial] << " " << minEigenvalue << std::endl;
+
+                    // Keep track of the highest min eigenvalues
+                    if (minEigenvalue < bestMinEigenvalue) {
+                        bestMinEigenvalue = minEigenvalue;
+                        bestMonomial = chosenMonomial;
+                        bestMatrix = chosenMatrix;
+                    }
+
                 }
+
             }
 
-            // Get the top row of the moment matrix
-            std::vector<monomial> topRow(momentMatricesNew[chosenMatrix].size());
-            for (int j=0; j<momentMatricesNew[chosenMatrix].size(); j++) {
-                topRow[j] = momentMatricesNew[chosenMatrix][0][j][0].second;
-            }
 
-            // Pick a random monomial that isn't in the top row
-            std::vector<double> probPerMonomial(variables.size());
-            double totalProb = 0;
-            for (int j=0; j<variables.size(); j++) {
-                if (variables[j].size() == 0) {
-                    probPerMonomial[j] = 0;
-                } else if (std::find(topRow.begin(), topRow.end(), variables[j]) != topRow.end()) {
-                    probPerMonomial[j] = 0;
-                } else {
-                    probPerMonomial[j] = 1.0 / std::pow(variables[j].size(), 2);
-                }
-                totalProb += probPerMonomial[j];
+            // Add the best monomial to the best matrix
+            std::vector<monomial> topRowBest(momentMatricesNew[bestMatrix].size());
+            for (int j=0; j<momentMatricesNew[bestMatrix].size(); j++) {
+                topRowBest[j] = momentMatricesNew[bestMatrix][0][j][0].second;
             }
-            for (int j=0; j<variables.size(); j++) {
-                probPerMonomial[j] /= totalProb;
-            }
-            double randomVal = (double)rand() / RAND_MAX;
-            double cumulativeProb = 0;
-            int randomMonomial = variables.size()-1;
-            for (int j=0; j<variables.size(); j++) {
-                cumulativeProb += probPerMonomial[j];
-                if (randomVal < cumulativeProb) {
-                    randomMonomial = j;
-                    break;
-                }
-            }
-            topRow.push_back(variables[randomMonomial]);
+            topRowBest.push_back(variables[bestMonomial]);
+            momentMatricesNew[bestMatrix] = generateFromTopRow(topRowBest);
 
-            // Add the monomial to the moment matrix
-            polynomialMatrix oldMomentMatrix = momentMatricesNew[chosenMatrix];
-            momentMatricesNew[chosenMatrix] = generateFromTopRow(topRow);
-
-            std::cout << "adding monomial " << variables[randomMonomial] << " to moment matrix " << chosenMatrix << std::endl;
+            std::cout << "adding: " << variables[bestMonomial] << " to matrix " << bestMatrix << std::endl;
+            std::cout << "top row is now: ";
+            for (int j=0; j<topRowBest.size(); j++) {
+                std::cout << topRowBest[j] << " ";
+            }
+            std::cout << std::endl;
 
             // Run the optimisation again to see if this helps
             double solNew = solveMOSEK(objective, momentMatricesNew, constraintsZero, constraintsPositive, verbosity, variables, varVals);
             if (solNew < sol) {
                 sol = solNew;
-            } else {
-                momentMatricesNew[chosenMatrix] = oldMomentMatrix;
+            }
+
+            if (sol < 5.0036) {
+                break;
             }
 
             // Stats about the moment matrix sizes
@@ -1128,15 +1176,20 @@ int main(int argc, char* argv[]) {
 
         }
 
-        // Output the final moment matrices
-        for (int i=0; i<momentMatricesNew.size(); i++) {
-            std::cout << "Moment matrix " << i << ": " << std::endl;
-            std::cout << momentMatricesNew[i] << std::endl << std::endl;
-        }
-
         return 0;
 
     }
+
+    // Maybe try putting sums and weirder stuff in the top row? TODO
+    //momentMatrices[0] = generateFromTopRow({
+                    //stringToMonomial("1"),
+                    //stringToMonomial("-<A1>"),
+                    //stringToMonomial("<A2>"),
+                    //stringToMonomial("<A3>"),
+                    //stringToMonomial("-<B1>"),
+                    //stringToMonomial("<B2>"),
+                    //stringToMonomial("<B3>"),
+            //});
 
     // Output the problem
     if (verbosity >= 2) {
