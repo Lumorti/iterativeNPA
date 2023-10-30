@@ -214,6 +214,28 @@ polynomial stringToPolynomial(std::string asString) {
 
 }
 
+// Given a polynomial and a variable list, evaluate the polynomial
+double evaluatePolynomial(polynomial& p, std::vector<monomial>& variables, std::vector<double>& varVals) {
+
+    // Replace each variable with its value
+    double toReturn = 0;
+    for (int i=0; i<p.size(); i++) {
+
+        // Find this variable
+        for (int j=0; j<variables.size(); j++) {
+            if (p[i].second == variables[j]) {
+                toReturn += p[i].first*varVals[j];
+                break;
+            }
+        }
+
+    }
+
+    // Return the value
+    return toReturn;
+
+}
+
 // Given a matrix and a variable list, return the matrix with the variables replaced
 Eigen::MatrixXd replaceVariables(polynomialMatrix& momentMatrix, std::vector<monomial>& variables, std::vector<double>& varVals) {
 
@@ -774,9 +796,18 @@ double solveMOSEK(polynomial obj, std::vector<polynomialMatrix>& psd, std::vecto
     }
     auto BM = mosek::fusion::Matrix::sparse(constraintsPositive.size(), variables.size(), monty::new_array_ptr<int>(BRows), monty::new_array_ptr<int>(BCols), monty::new_array_ptr<double>(BVals));
 
-    // The vectors defining the PSD constraints TODO
-    std::vector<std::shared_ptr<monty::ndarray<int,2>>> indicesPSDPerMat;
-    std::vector<std::shared_ptr<monty::ndarray<double,2>>> coeffsPSDPerMat;
+    // Output the variable list
+    if (verbosity >= 2) {
+        std::cout << "Variables:" << std::endl;
+        for (int i=0; i<variables.size(); i++) {
+            std::cout << i << " " << variables[i] << std::endl;
+        }
+    }
+
+    // The vectors defining the PSD constraints
+    std::vector<std::shared_ptr<monty::ndarray<int,1>>> indicesPSDPerMat;
+    std::vector<std::shared_ptr<monty::ndarray<double,1>>> coeffsPSDPerMat;
+    std::vector<std::pair<int,int>> matDims;
     for (int k=0; k<psd.size(); k++) {
 
         // Determine how many mats we need to sum to make this matrix
@@ -790,17 +821,19 @@ double solveMOSEK(polynomial obj, std::vector<polynomialMatrix>& psd, std::vecto
         }
 
         // For each part of the sum
-        std::vector<std::vector<int>> indicesPSD(numMatsNeeded, std::vector<int>(psd[k].size(), 0));
-        std::vector<std::vector<double>> coeffsPSD(numMatsNeeded, std::vector<double>(psd[k].size(), 0));
+        int sVecSize = psd[k].size() * (psd[k].size() + 1) / 2;
+        std::vector<int> indicesPSD;
+        std::vector<double> coeffsPSD;
         for (int l=0; l<numMatsNeeded; l++) {
 
             // The indices and coefficients for the svec
-            int ind = 0;
             for (int i=0; i<psd[k].size(); i++) {
                 for (int j=i; j<psd[k][i].size(); j++) {
 
                     // If there are no more, this is zero
-                    if (k >= psd[k][i][j].size()) {
+                    if (l >= psd[k][i][j].size()) {
+                        indicesPSD.push_back(0);
+                        coeffsPSD.push_back(0.0);
                         continue;
                     }
 
@@ -808,18 +841,16 @@ double solveMOSEK(polynomial obj, std::vector<polynomialMatrix>& psd, std::vecto
                     monomial toFind = {psd[k][i][j][l].second};
                     for (int k=0; k<variables.size(); k++) {
                         if (variables[k] == toFind) {
-                            indicesPSD[l][ind] = k;
+                            indicesPSD.push_back(k);
                             break;
                         }
                     }
 
                     // The coeff for mosek's svec
                     if (i != j) {
-                        //coeffsPSD.push_back(psd[k][i][j][l].first*std::sqrt(2.0));
-                        coeffsPSD[l][ind] = psd[k][i][j][l].first*std::sqrt(2.0);
+                        coeffsPSD.push_back(psd[k][i][j][l].first*std::sqrt(2.0));
                     } else {
-                        //coeffsPSD.push_back(psd[k][i][j][l].first);
-                        coeffsPSD[l][ind] = psd[k][i][j][l].first;
+                        coeffsPSD.push_back(psd[k][i][j][l].first);
                     }
 
                 }
@@ -833,8 +864,9 @@ double solveMOSEK(polynomial obj, std::vector<polynomialMatrix>& psd, std::vecto
         auto coeffsPSDM = monty::new_array_ptr<double>(coeffsPSD);
 
         // Add to the list
-        indicesPSDPerMat.push_back(indicesPSD);
-        coeffsPSDPerMat.push_back(coeffsPSD);
+        indicesPSDPerMat.push_back(indicesPSDM);
+        coeffsPSDPerMat.push_back(coeffsPSDM);
+        matDims.push_back({numMatsNeeded, sVecSize});
 
     }
 
@@ -855,7 +887,20 @@ double solveMOSEK(polynomial obj, std::vector<polynomialMatrix>& psd, std::vecto
 
     // The matrix of this should be PSD
     for (int k=0; k<psd.size(); k++) {
-        M->constraint(mosek::fusion::Expr::sum(mosek::fusion::Expr::mulElm(coeffsPSDPerMat[k], xM->pick(indicesPSDPerMat[k])), 1), mosek::fusion::Domain::inSVecPSDCone());
+        M->constraint(
+            mosek::fusion::Expr::sum(
+                mosek::fusion::Expr::reshape(
+                    mosek::fusion::Expr::mulElm(
+                        coeffsPSDPerMat[k], 
+                        xM->pick(indicesPSDPerMat[k])
+                    ),
+                    matDims[k].first,
+                    matDims[k].second
+                ),
+                0
+            ), 
+            mosek::fusion::Domain::inSVecPSDCone()
+        );
     }
 
     // Linear equality constraints
@@ -881,12 +926,14 @@ double solveMOSEK(polynomial obj, std::vector<polynomialMatrix>& psd, std::vecto
     }
 
     // Check the eigenvalues of each moment matrix
-    for (int i=0; i<psd.size(); i++) {
-        std::vector<std::vector<double>> eigenvectors;
-        std::vector<double> eigenvalues;
-        getEigens(psd[i], variables, variableValues, eigenvectors, eigenvalues);
-        std::sort(eigenvalues.begin(), eigenvalues.end());
-        std::cout << "Min eigenvalue: " << eigenvalues[0] << std::endl;
+    if (verbosity >= 1) {
+        for (int i=0; i<psd.size(); i++) {
+            std::vector<std::vector<double>> eigenvectors;
+            std::vector<double> eigenvalues;
+            getEigens(psd[i], variables, variableValues, eigenvectors, eigenvalues);
+            std::sort(eigenvalues.begin(), eigenvalues.end());
+            std::cout << "Min eigenvalue: " << eigenvalues[0] << std::endl;
+        }
     }
 
     // If superverbose, output all monomials
@@ -1134,142 +1181,99 @@ int main(int argc, char* argv[]) {
     // If testing TODO
     if (testing) {
 
-        // Maybe try putting sums and weirder stuff in the top row?
-        momentMatrices[0] = generateFromTopRow({
-                        stringToPolynomial("1"),
+        //momentMatrices[0] = generateFromTopRow({
+                        //stringToPolynomial("1"),
                         //stringToPolynomial("<A1>"),
                         //stringToPolynomial("<A2>"),
                         //stringToPolynomial("<A3>"),
                         //stringToPolynomial("<B1>"),
                         //stringToPolynomial("<B2>"),
                         //stringToPolynomial("<B3>"),
-                        stringToPolynomial("<A1>+<B1>"),
-                        stringToPolynomial("<A2>+<B2>"),
-                        stringToPolynomial("<A3>+<B3>"),
-                });
+                    //});
 
-        // Generate a random set of moment matrices
-        //std::vector<polynomialMatrix> momentMatricesNew;
-        //momentMatricesNew = generateAllMomentMatrices(bellFunc, level, subLevel, numToSample);
-
-        //// Output the final moment matrices
-        //for (int i=0; i<momentMatricesNew.size(); i++) {
-            //std::cout << "Moment matrix " << i << ": " << std::endl;
-            //std::cout << momentMatricesNew[i] << std::endl << std::endl;
-        //}
-
-        //// Run the optimisation
+        //// Get the variables
         //std::vector<monomial> variables;
+        //addVariables(variables, momentMatrices[0]);
         //std::vector<double> varVals;
-        //double sol = solveMOSEK(objective, momentMatricesNew, constraintsZero, constraintsPositive, verbosity, variables, varVals);
+        //for (int i=0; i<variables.size(); i++) {
+            //varVals.push_back(0);
+        //}
+         
+        //for (int i=0; i<1000; i++) {
 
-        //for (int i=0; i<maxIters; i++) {
-
-            //// Try to find the best
-            //int bestMatrix = 0;
-            //double bestMinEigenvalue = 10000;
-            //int bestMonomial = 0;
-
-            //// For each moment matrix
-            //for (int chosenMatrix=0; chosenMatrix<momentMatricesNew.size(); chosenMatrix++) {
-
-                //// For each monomials that could be added
-                //for (int chosenMonomial=0; chosenMonomial<variables.size(); chosenMonomial++) {
-
-                    //// If the chosen monomial is less than a given size
-                    //if (variables[chosenMonomial].size() > 3) {
-                        //continue;
-                    //}
-
-                    //// Get the top row of the moment matrix
-                    //std::vector<monomial> topRow(momentMatricesNew[chosenMatrix].size());
-                    //for (int j=0; j<momentMatricesNew[chosenMatrix].size(); j++) {
-                        //topRow[j] = momentMatricesNew[chosenMatrix][0][j][0].second;
-                    //}
-
-                    //// If the monomial is already in the top row, skip
-                    //if (std::find(topRow.begin(), topRow.end(), variables[chosenMonomial]) != topRow.end()) {
-                        //continue;
-                    //}
-
-                    //// Add the monomial to the moment matrix
-                    //topRow.push_back(variables[chosenMonomial]);
-                    //polynomialMatrix newMat = generateFromTopRow(topRow);
-
-                    //// Check the eigenvalues of this new mat
-                    //std::vector<double> eigenvalues;
-                    //std::vector<std::vector<double>> eigenvectors;
-                    //getEigens(newMat, variables, varVals, eigenvectors, eigenvalues);
-
-                    //// Get the minimum eigenvalue
-                    //double minEigenvalue = 1000000;
-                    //for (int j=0; j<eigenvalues.size(); j++) {
-                        //if (eigenvalues[j] < minEigenvalue) {
-                            //minEigenvalue = eigenvalues[j];
-                        //}
-                    //}
-                    //minEigenvalue /= std::pow(newMat.size(), 2);
-
-                    //std::cout << chosenMatrix << " " << variables[chosenMonomial] << " " << minEigenvalue << std::endl;
-
-                    //// Keep track of the highest min eigenvalues
-                    //if (minEigenvalue < bestMinEigenvalue) {
-                        //bestMinEigenvalue = minEigenvalue;
-                        //bestMonomial = chosenMonomial;
-                        //bestMatrix = chosenMatrix;
-                    //}
-
-                //}
-
+            //// Random assign the variables between -1 and 1
+            //for (int j=0; j<variables.size(); j++) {
+                //varVals[j] = (double(rand()) / RAND_MAX) * 2 - 1;
             //}
+            //varVals[0] = 1.0;
 
+            //// Check the eigenvalues of the matrix TODO
+            //Eigen::MatrixXd momentMatrixEigen = replaceVariables(momentMatrices[0], variables, varVals);
+            //Eigen::EigenSolver<Eigen::MatrixXd> es(momentMatrixEigen);
+            //Eigen::VectorXd eigenValuesEigen = es.eigenvalues().real();
+            //double minEigenValue = -eigenValuesEigen.minCoeff();
 
-            //// Add the best monomial to the best matrix
-            //std::vector<monomial> topRowBest(momentMatricesNew[bestMatrix].size());
-            //for (int j=0; j<momentMatricesNew[bestMatrix].size(); j++) {
-                //topRowBest[j] = momentMatricesNew[bestMatrix][0][j][0].second;
-            //}
-            //topRowBest.push_back(variables[bestMonomial]);
-            //momentMatricesNew[bestMatrix] = generateFromTopRow(topRowBest);
+            //// Output the variables
+            ////for (int j=0; j<variables.size(); j++) {
+                ////std::cout << variables[j] << " = " << varVals[j] << std::endl;
+            ////}
 
-            //std::cout << "adding: " << variables[bestMonomial] << " to matrix " << bestMatrix << std::endl;
-            //std::cout << "top row is now: ";
-            //for (int j=0; j<topRowBest.size(); j++) {
-                //std::cout << topRowBest[j] << " ";
-            //}
-            //std::cout << std::endl;
+            //// Output the objective
+            ////std::cout << "Objective = " << objective << std::endl;
 
-            //// Run the optimisation again to see if this helps
-            //double solNew = solveMOSEK(objective, momentMatricesNew, constraintsZero, constraintsPositive, verbosity, variables, varVals);
-            //if (solNew < sol) {
-                //sol = solNew;
-            //}
+            //// Check the objective function
+            //double objectiveVal = evaluatePolynomial(objective, variables, varVals);
 
-            //if (sol < 5.0036) {
-                //break;
-            //}
-
-            //// Stats about the moment matrix sizes
-            //int largest = 0;
-            //int smallest = 10000;
-            //int avg = 0;
-            //int total = 0;
-            //int totalSqr = 0;
-            //for (int i=0; i<momentMatricesNew.size(); i++) {
-                //if (momentMatricesNew[i].size() > largest) {
-                    //largest = momentMatricesNew[i].size();
-                //}
-                //if (momentMatricesNew[i].size() < smallest) {
-                    //smallest = momentMatricesNew[i].size();
-                //}
-                //total += momentMatricesNew[i].size();
-                //totalSqr += momentMatricesNew[i].size() * momentMatricesNew[i].size();
-            //}
-            //std::cout << "best= " << sol << "  new=" << solNew << "  mats=" << momentMatricesNew.size() << "  max=" << largest << "  min=" << smallest <<  "  tot=" << total << "  sqr=" << totalSqr << std::endl;
+            //std::cout << minEigenValue << " " << objectiveVal << std::endl;
 
         //}
 
-        //return 0;
+        std::vector<polynomialMatrix> momentMatrices = generateAllMomentMatrices(bellFunc, level, -1, -1);
+        polynomialMatrix matCopy = momentMatrices[0];
+
+        double diag = 3;
+        for (int i=0; i<400; i++) {
+            diag -= 0.01;
+
+            momentMatrices[0] = matCopy;
+            //momentMatrices[0] = generateFromTopRow({
+                            //stringToPolynomial("1"),
+                            //stringToPolynomial("<A1>"),
+                            //stringToPolynomial("<A2>"),
+                            //stringToPolynomial("<A3>"),
+                            //stringToPolynomial("<B1>"),
+                            //stringToPolynomial("<B2>"),
+                            //stringToPolynomial("<B3>"),
+                            //stringToPolynomial("<A1A2>"),
+                            //stringToPolynomial("<A1A3>"),
+                            //stringToPolynomial("<A2A3>"),
+                            //stringToPolynomial("<B1B2>"),
+                            //stringToPolynomial("<B1B3>"),
+                            //stringToPolynomial("<B2B3>"),
+                            //stringToPolynomial("<A1B1>"),
+                            //stringToPolynomial("<A1B2>"),
+                            //stringToPolynomial("<A1B3>"),
+                            //stringToPolynomial("<A2B1>"),
+                            //stringToPolynomial("<A2B2>"),
+                            //stringToPolynomial("<A2B3>"),
+                            //stringToPolynomial("<A3B1>"),
+                            //stringToPolynomial("<A3B2>"),
+                            //stringToPolynomial("<A3B3>"),
+                    //});
+
+            // Increase each diagonal by a certain value
+            for (int i=0; i<momentMatrices.size(); i++) {
+                for (int j=0; j<momentMatrices[i].size(); j++) {
+                    momentMatrices[i][j][j].push_back({diag, monomial()});
+                }
+            }
+
+            double val = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity-2);
+            std::cout << diag << " " << val << std::endl;
+
+        }
+
+        return 0;
 
     }
 
