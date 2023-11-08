@@ -11,6 +11,7 @@
 // Define the type for the polynomials
 typedef std::vector<std::pair<char,int>> monomial;
 typedef std::vector<std::pair<double, monomial>> polynomial;
+typedef std::vector<polynomial> polynomialRow;
 typedef std::vector<std::vector<polynomial>> polynomialMatrix;
 
 // Generate a monomial from a given string (e.g. "<A1B2>")
@@ -74,7 +75,7 @@ std::ostream& operator<<(std::ostream& os, const monomial& m) {
 std::ostream& operator<<(std::ostream& os, const polynomial& p) {
 
     // Check if it's zero
-    if (p.size() == 1 && p[0].first == 0) {
+    if (p.size() == 0 || (p.size() == 1 && p[0].first == 0)) {
         os << "0";
         return os;
     }
@@ -1181,97 +1182,61 @@ int main(int argc, char* argv[]) {
     // If testing TODO
     if (testing) {
 
-        //momentMatrices[0] = generateFromTopRow({
-                        //stringToPolynomial("1"),
-                        //stringToPolynomial("<A1>"),
-                        //stringToPolynomial("<A2>"),
-                        //stringToPolynomial("<A3>"),
-                        //stringToPolynomial("<B1>"),
-                        //stringToPolynomial("<B2>"),
-                        //stringToPolynomial("<B3>"),
-                    //});
-
-        //// Get the variables
-        //std::vector<monomial> variables;
-        //addVariables(variables, momentMatrices[0]);
-        //std::vector<double> varVals;
-        //for (int i=0; i<variables.size(); i++) {
-            //varVals.push_back(0);
-        //}
-         
-        //for (int i=0; i<1000; i++) {
-
-            //// Random assign the variables between -1 and 1
-            //for (int j=0; j<variables.size(); j++) {
-                //varVals[j] = (double(rand()) / RAND_MAX) * 2 - 1;
-            //}
-            //varVals[0] = 1.0;
-
-            //// Check the eigenvalues of the matrix TODO
-            //Eigen::MatrixXd momentMatrixEigen = replaceVariables(momentMatrices[0], variables, varVals);
-            //Eigen::EigenSolver<Eigen::MatrixXd> es(momentMatrixEigen);
-            //Eigen::VectorXd eigenValuesEigen = es.eigenvalues().real();
-            //double minEigenValue = -eigenValuesEigen.minCoeff();
-
-            //// Output the variables
-            ////for (int j=0; j<variables.size(); j++) {
-                ////std::cout << variables[j] << " = " << varVals[j] << std::endl;
-            ////}
-
-            //// Output the objective
-            ////std::cout << "Objective = " << objective << std::endl;
-
-            //// Check the objective function
-            //double objectiveVal = evaluatePolynomial(objective, variables, varVals);
-
-            //std::cout << minEigenValue << " " << objectiveVal << std::endl;
-
-        //}
-
-        std::vector<polynomialMatrix> momentMatrices = generateAllMomentMatrices(bellFunc, level, -1, -1);
-        polynomialMatrix matCopy = momentMatrices[0];
-
-        double diag = 3;
-        for (int i=0; i<400; i++) {
-            diag -= 0.01;
-
-            momentMatrices[0] = matCopy;
-            //momentMatrices[0] = generateFromTopRow({
-                            //stringToPolynomial("1"),
-                            //stringToPolynomial("<A1>"),
-                            //stringToPolynomial("<A2>"),
-                            //stringToPolynomial("<A3>"),
-                            //stringToPolynomial("<B1>"),
-                            //stringToPolynomial("<B2>"),
-                            //stringToPolynomial("<B3>"),
-                            //stringToPolynomial("<A1A2>"),
-                            //stringToPolynomial("<A1A3>"),
-                            //stringToPolynomial("<A2A3>"),
-                            //stringToPolynomial("<B1B2>"),
-                            //stringToPolynomial("<B1B3>"),
-                            //stringToPolynomial("<B2B3>"),
-                            //stringToPolynomial("<A1B1>"),
-                            //stringToPolynomial("<A1B2>"),
-                            //stringToPolynomial("<A1B3>"),
-                            //stringToPolynomial("<A2B1>"),
-                            //stringToPolynomial("<A2B2>"),
-                            //stringToPolynomial("<A2B3>"),
-                            //stringToPolynomial("<A3B1>"),
-                            //stringToPolynomial("<A3B2>"),
-                            //stringToPolynomial("<A3B3>"),
-                    //});
-
-            // Increase each diagonal by a certain value
-            for (int i=0; i<momentMatrices.size(); i++) {
-                for (int j=0; j<momentMatrices[i].size(); j++) {
-                    momentMatrices[i][j][j].push_back({diag, monomial()});
+        // Put into into standard SDP form
+        // s.t. X >= 0
+        
+        // C.X
+        int matSize = momentMatrices[0].size();
+        polynomialMatrix C = std::vector<polynomialRow>(matSize, polynomialRow(matSize, polynomial()));
+        for (int i=0; i<objective.size(); i++) {
+            monomial monToFind = objective[i].second;
+            int locX = -1;
+            int locY = -1;
+            for (int j=0; j<momentMatrices[0].size(); j++) {
+                for (int k=j+1; k<momentMatrices[0][j].size(); k++) {
+                    if (momentMatrices[0][j][k].size() == 1 && momentMatrices[0][j][k][0].second == monToFind) {
+                        locX = j;
+                        locY = k;
+                        break;
+                    }
                 }
             }
-
-            double val = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity-2);
-            std::cout << diag << " " << val << std::endl;
-
+            C[locX][locY] = {std::make_pair(objective[i].first, monomial())};
         }
+
+        // A_i.X = b_i
+        std::vector<polynomialMatrix> As;
+        std::vector<polynomial> b;
+        for (int i=0; i<momentMatrices[0].size(); i++) {
+            polynomialMatrix A = std::vector<polynomialRow>(matSize, polynomialRow(matSize, polynomial()));
+            A[i][i] = stringToPolynomial("1");
+            As.push_back(A);
+            b.push_back(stringToPolynomial("1"));
+        }
+        for (int i=0; i<momentMatrices[0].size(); i++) {
+            for (int j=i+1; j<momentMatrices[0][i].size(); j++) {
+
+                // Find all monomials that are the same
+                monomial monToFind = momentMatrices[0][i][j][0].second;
+
+            }
+        }
+
+        // Output the primal in this form
+        std::cout << "C: " << std::endl;
+        std::cout << C << std::endl << std::endl;
+        std::cout << "As: " << std::endl;
+        for (int i=0; i<As.size(); i++) {
+            std::cout << As[i] << std::endl << std::endl;
+        }
+        std::cout << "b: " << std::endl;
+        for (int i=0; i<b.size(); i++) {
+            std::cout << b[i] << std::endl;
+        }
+        
+        // Convert to the dual
+        // b.y
+        // s.t. C-\sum_i y_i A_i >= 0
 
         return 0;
 
