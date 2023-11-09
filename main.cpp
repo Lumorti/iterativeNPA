@@ -11,8 +11,60 @@
 // Define the type for the polynomials
 typedef std::vector<std::pair<char,int>> monomial;
 typedef std::vector<std::pair<double, monomial>> polynomial;
-typedef std::vector<polynomial> polynomialRow;
+typedef std::vector<polynomial> polynomialVector;
 typedef std::vector<std::vector<polynomial>> polynomialMatrix;
+
+// Convert a constant polynomial to a double
+double polynomialToDouble(polynomial p) {
+    
+    // Check if it's zero
+    if (p.size() == 0 || (p.size() == 1 && p[0].first == 0)) {
+        return 0;
+    }
+
+    // Check if it's a constant
+    if (p.size() == 1 && p[0].second.size() == 0) {
+        return p[0].first;
+    }
+
+    // Otherwise return 0
+    return 0;
+
+}
+
+// Convert a constant polynomial matrix to a double matrix
+std::vector<std::vector<double>> polynomialToDouble(polynomialMatrix m) {
+
+    // Create the matrix
+    std::vector<std::vector<double>> toReturn(m.size(), std::vector<double>(m[0].size(), 0));
+
+    // Iterate through the matrix
+    for (unsigned long int i=0; i<m.size(); i++) {
+        for (unsigned long int j=0; j<m[i].size(); j++) {
+            toReturn[i][j] = polynomialToDouble(m[i][j]);
+        }
+    }
+
+    // Return the matrix
+    return toReturn;
+
+}
+
+// Convert a constant polynomial vector to a double vector
+std::vector<double> polynomialToDouble(polynomialVector r) {
+
+    // Create the vector
+    std::vector<double> toReturn(r.size(), 0);
+
+    // Iterate through the vector
+    for (unsigned long int i=0; i<r.size(); i++) {
+        toReturn[i] = polynomialToDouble(r[i]);
+    }
+
+    // Return the vector
+    return toReturn;
+
+}
 
 // Generate a monomial from a given string (e.g. "<A1B2>")
 monomial stringToMonomial(std::string asString) {
@@ -713,7 +765,7 @@ void addVariables(std::vector<monomial>& variables, polynomial toAdd) {
 }
 
 // Convert to MOSEK form and solve
-double solveMOSEK(polynomial obj, std::vector<polynomialMatrix>& psd, std::vector<polynomial> constraintsZero, std::vector<polynomial> constraintsPositive, int verbosity, std::vector<monomial>& variables, std::vector<double>& variableValues) {
+double solveMOSEK(polynomial obj, std::vector<polynomialMatrix>& psd, std::vector<polynomial> constraintsZero, std::vector<polynomial> constraintsPositive, int verbosity, std::vector<monomial>& variables, std::vector<double>& variableValues, bool isDual=false) {
 
     // Get the list of variables
     int oneIndex = 0;
@@ -878,10 +930,18 @@ double solveMOSEK(polynomial obj, std::vector<polynomialMatrix>& psd, std::vecto
     }
 
     // Create the main variable vector
-    mosek::fusion::Variable::t xM = M->variable(variables.size(), mosek::fusion::Domain::inRange(-1, 1));
+    mosek::fusion::Variable::t xM = M->variable(variables.size());
+    //mosek::fusion::Variable::t xM = M->variable(variables.size(), mosek::fusion::Domain::inRange(-1, 1));
+    if (!isDual) {
+        M->constraint(xM, mosek::fusion::Domain::inRange(-1.0, 1.0));
+    }
 
     // The objective function
-    M->objective(mosek::fusion::ObjectiveSense::Maximize, mosek::fusion::Expr::dot(cM, xM));
+    if (isDual) {
+        M->objective(mosek::fusion::ObjectiveSense::Minimize, mosek::fusion::Expr::dot(cM, xM));
+    } else {
+        M->objective(mosek::fusion::ObjectiveSense::Maximize, mosek::fusion::Expr::dot(cM, xM));
+    }
 
     // The one variable should be fixed
     M->constraint(xM->index(oneIndex), mosek::fusion::Domain::equalsTo(1.0));
@@ -990,10 +1050,10 @@ double solveMOSEK(polynomial obj, std::vector<polynomialMatrix>& psd, std::vecto
 }
 
 // Wrapper in case vars aren't needed
-double solveMOSEK(polynomial obj, std::vector<polynomialMatrix>& psd, std::vector<polynomial> constraintsZero, std::vector<polynomial> constraintsPositive, int verbosity) {
+double solveMOSEK(polynomial obj, std::vector<polynomialMatrix>& psd, std::vector<polynomial> constraintsZero, std::vector<polynomial> constraintsPositive, int verbosity, bool isDual=false) {
     std::vector<monomial> variables;
     std::vector<double> variableValues;
-    return solveMOSEK(obj, psd, constraintsZero, constraintsPositive, verbosity, variables, variableValues);
+    return solveMOSEK(obj, psd, constraintsZero, constraintsPositive, verbosity, variables, variableValues, isDual);
 }
 
 // Encode a monomial into a format better suited for a neural net 
@@ -1187,7 +1247,7 @@ int main(int argc, char* argv[]) {
         
         // C.X
         int matSize = momentMatrices[0].size();
-        polynomialMatrix C = std::vector<polynomialRow>(matSize, polynomialRow(matSize, polynomial()));
+        polynomialMatrix C = std::vector<polynomialVector>(matSize, polynomialVector(matSize, polynomial()));
         for (int i=0; i<objective.size(); i++) {
             monomial monToFind = objective[i].second;
             int locX = -1;
@@ -1201,28 +1261,63 @@ int main(int argc, char* argv[]) {
                     }
                 }
             }
-            C[locX][locY] = {std::make_pair(objective[i].first, monomial())};
+            C[locX][locY] = {std::make_pair(objective[i].first/2.0, monomial())};
+            C[locY][locX] = {std::make_pair(objective[i].first/2.0, monomial())};
         }
 
         // A_i.X = b_i
         std::vector<polynomialMatrix> As;
         std::vector<polynomial> b;
         for (int i=0; i<momentMatrices[0].size(); i++) {
-            polynomialMatrix A = std::vector<polynomialRow>(matSize, polynomialRow(matSize, polynomial()));
+            polynomialMatrix A = std::vector<polynomialVector>(matSize, polynomialVector(matSize, polynomial()));
             A[i][i] = stringToPolynomial("1");
             As.push_back(A);
             b.push_back(stringToPolynomial("1"));
         }
+        std::vector<monomial> alreadyDone;
         for (int i=0; i<momentMatrices[0].size(); i++) {
             for (int j=i+1; j<momentMatrices[0][i].size(); j++) {
 
-                // Find all monomials that are the same
+                // Check if we've already found all versions of this monom
                 monomial monToFind = momentMatrices[0][i][j][0].second;
+                if (std::find(alreadyDone.begin(), alreadyDone.end(), monToFind) != alreadyDone.end()) {
+                    continue;
+                } else {
+                    alreadyDone.push_back(monToFind);
+                }
+
+                // Find all monomials that are the same
+                std::vector<std::pair<int,int>> equalMonomLocs;
+                //equalMonomLocs.push_back(std::make_pair(j,i));
+                for (int k=i; k<momentMatrices[0].size(); k++) {
+                    for (int l=k+1; l<momentMatrices[0][k].size(); l++) {
+                        if (k == i && l == j) {
+                            continue;
+                        }
+                        if (momentMatrices[0][k][l].size() == 1 && momentMatrices[0][k][l][0].second == monToFind) {
+                            equalMonomLocs.push_back(std::make_pair(k,l));
+                            //equalMonomLocs.push_back(std::make_pair(l,k));
+                        }
+                    }
+                }
+
+                // For each equal monom, add a matrix
+                std::cout << "For monomial " << monToFind << " at (" << i << "," << j << ") found " << equalMonomLocs.size() << " equal monomials" << std::endl;
+                for (int k=0; k<equalMonomLocs.size(); k++) {
+                    std::cout << "Adding constraint for monomial " << monToFind << " at (" << equalMonomLocs[k].first << "," << equalMonomLocs[k].second << ")" << std::endl;
+                    polynomialMatrix A = std::vector<polynomialVector>(matSize, polynomialVector(matSize, polynomial()));
+                    A[i][j] = stringToPolynomial("1");
+                    A[equalMonomLocs[k].first][equalMonomLocs[k].second] = stringToPolynomial("-1");
+                    As.push_back(A);
+                    b.push_back(stringToPolynomial("0"));
+                }
 
             }
         }
 
         // Output the primal in this form
+        std::cout << "Moment mat:" << std::endl;
+        std::cout << momentMatrices[0] << std::endl << std::endl;
         std::cout << "C: " << std::endl;
         std::cout << C << std::endl << std::endl;
         std::cout << "As: " << std::endl;
@@ -1233,10 +1328,66 @@ int main(int argc, char* argv[]) {
         for (int i=0; i<b.size(); i++) {
             std::cout << b[i] << std::endl;
         }
+
+        // Convert everything to MOSEK form and test it
+        std::vector<std::shared_ptr<monty::ndarray<double,2>>> AsM;
+        std::vector<std::vector<std::vector<double>>> AsMat;
+        for (int i=0; i<As.size(); i++) {
+            AsMat.push_back(polynomialToDouble(As[i]));
+            AsM.push_back(monty::new_array_ptr<double>(AsMat[i]));
+        }
+        std::vector<std::vector<double>> CMat = polynomialToDouble(C);
+        std::shared_ptr<monty::ndarray<double,2>> CM = monty::new_array_ptr<double>(CMat);
+        std::vector<double> bM = polynomialToDouble(b);
+
+        // Create a model
+        mosek::fusion::Model::t M = new mosek::fusion::Model(); auto _M = monty::finally([&]() {M->dispose();});
+        if (verbosity >= 2) {
+            M->setLogHandler([=](const std::string & msg) {std::cout << msg << std::flush;});
+        }
+        mosek::fusion::Variable::t XM = M->variable(matSize, matSize, mosek::fusion::Domain::inPSDCone());
+        M->objective(mosek::fusion::ObjectiveSense::Maximize, mosek::fusion::Expr::dot(CM, XM));
+        for (int i=0; i<As.size(); i++) {
+            M->constraint(mosek::fusion::Expr::dot(AsM[i], XM), mosek::fusion::Domain::equalsTo(bM[i]));
+        }
+
+        // Output the primal objective value
+        M->solve();
+        double objPrimal = M->primalObjValue();
+        if (verbosity >= 1) {
+            std::cout << "Objective value: " << objPrimal << std::endl;
+        }
         
         // Convert to the dual
         // b.y
+        polynomial newObjective;
+        for (int i=0; i<bM.size(); i++) {
+            if (std::abs(bM[i]) > 1e-10) {
+                newObjective.push_back(std::make_pair(bM[i], stringToMonomial("<C" + std::to_string(i) + ">")));
+            }
+        }
+        std::cout << "New Objective: " << newObjective << std::endl;
         // s.t. C-\sum_i y_i A_i >= 0
+        polynomialMatrix newMomentMat = polynomialMatrix(matSize, polynomialVector(matSize, polynomial()));
+        for (int i=0; i<matSize; i++) {
+            for (int j=0; j<matSize; j++) {
+                newMomentMat[i][j].push_back(std::make_pair(CMat[i][j], monomial()));
+                for (int k=0; k<AsMat.size(); k++) {
+                    if (std::abs(AsMat[k][i][j]) > 1e-10) {
+                        newMomentMat[i][j].push_back(std::make_pair(-AsMat[k][i][j], stringToMonomial("<C" + std::to_string(k) + ">")));
+                    }
+                }
+            }
+        }
+        std::cout << "New moment matrix: " << std::endl;
+        std::cout << newMomentMat << std::endl << std::endl;
+
+        // Solve the dual
+        objective = newObjective;
+        momentMatrices = {newMomentMat};
+        constraintsZero = {};
+        constraintsPositive = {};
+        solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, true);
 
         return 0;
 
