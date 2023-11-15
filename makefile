@@ -1,7 +1,7 @@
 CXX=g++
 CXXFLAGS=-Wfatal-errors -O3 -march=native
 DEBUGFLAGS=-Wall -g -pg -Wfatal-errors
-LIBSEIGEN= -I/usr/include/eigen3
+LIBSEIGEN= -I${EIGENHOME}
 LIBSMOSEK= -I${MSKHOME}/h -L${MSKHOME}/bin -Wl,-rpath-link,${MSKHOME}/bin -Wl,-rpath=${MSKHOME}/bin -lmosek64 -lfusion64
 LIBS=$(LIBSEIGEN) $(LIBSMOSEK)
 
