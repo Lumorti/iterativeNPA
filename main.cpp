@@ -1124,7 +1124,7 @@ int main(int argc, char* argv[]) {
     int level = 1;
     int subLevel = -1;
     polynomial bellFunc;
-    bool testing = false;
+    int testing = 0;
     int numToSample = 1000;
     int verbosity = 1;
     int maxIters = 1000;
@@ -1182,7 +1182,8 @@ int main(int argc, char* argv[]) {
 
         // If we're testing
         } else if (argAsString == "-t") {
-            testing = true;
+            testing = std::stoi(argv[i+1]);
+			i++;
 
         // If setting verbosity
         } else if (argAsString == "-v") {
@@ -1240,7 +1241,7 @@ int main(int argc, char* argv[]) {
     std::vector<polynomial> constraintsPositive;
 
     // If testing TODO
-    if (testing) {
+    if (testing == 1) {
 
         // Put into into standard SDP form
         // s.t. X >= 0
@@ -1391,7 +1392,20 @@ int main(int argc, char* argv[]) {
 
         return 0;
 
-    }
+	// Try the iterative approach TODO
+    } else if (testing == 2) {
+
+		// Run the main problem
+		std::vector<double> dualSol;
+        solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, false, dualSol);
+		
+		// Run the subproblem
+
+		// Add the constraint
+
+		return 0;
+
+	}
 
     // Output the problem
     if (verbosity >= 2) {
