@@ -1143,7 +1143,7 @@ int main(int argc, char* argv[]) {
             i++;
 
         // CHSH (c = 2, q = 2sqrt(2) w/ level 1)
-        } else if (argAsString == "--chsh") {
+        } else if (argAsString == "--chsh" || argAsString == "--CHSH") {
             bellFunc = stringToPolynomial("<A1B1>+<A1B2>+<A2B1>-<A2B2>");
 
         // I3322
@@ -1152,7 +1152,7 @@ int main(int argc, char* argv[]) {
         // l2 (28x28) = 5.00612
         // l3 (88x88) = 5.0035
         // l4 (244x244) = 5.0035
-        } else if (argAsString == "--I3322") {
+        } else if (argAsString == "--I3322" || argAsString == "--i3322") {
             bellFunc = stringToPolynomial("<A1>-<A2>+<B1>-<B2>-<A1B1>+<A1B2>+<A2B1>-<A2B2>+<A1B3>+<A2B3>+<A3B1>+<A3B2>");
 
         // Set the level
@@ -1338,8 +1338,14 @@ int main(int argc, char* argv[]) {
             AsM.push_back(monty::new_array_ptr<double>(AsMat[i]));
         }
         std::vector<std::vector<double>> CMat = polynomialToDouble(C);
+        for (int i=0; i<CMat.size(); i++) {
+            for (int j=0; j<CMat[i].size(); j++) {
+                CMat[i][j] *= -1.0;
+            }
+        }
         std::shared_ptr<monty::ndarray<double,2>> CM = monty::new_array_ptr<double>(CMat);
-        std::vector<double> bM = polynomialToDouble(b);
+        std::vector<double> bVec = polynomialToDouble(b);
+        std::shared_ptr<monty::ndarray<double,1>> bM = monty::new_array_ptr<double>(bVec);
 
         // Create a model
         mosek::fusion::Model::t M = new mosek::fusion::Model(); auto _M = monty::finally([&]() {M->dispose();});
@@ -1347,24 +1353,44 @@ int main(int argc, char* argv[]) {
             M->setLogHandler([=](const std::string & msg) {std::cout << msg << std::flush;});
         }
         mosek::fusion::Variable::t XM = M->variable(matSize, matSize, mosek::fusion::Domain::inPSDCone());
-        M->objective(mosek::fusion::ObjectiveSense::Maximize, mosek::fusion::Expr::dot(CM, XM));
+        M->objective(mosek::fusion::ObjectiveSense::Minimize, mosek::fusion::Expr::dot(CM, XM));
         for (int i=0; i<As.size(); i++) {
-            M->constraint(mosek::fusion::Expr::dot(AsM[i], XM), mosek::fusion::Domain::equalsTo(bM[i]));
+            M->constraint(mosek::fusion::Expr::dot(AsM[i], XM), mosek::fusion::Domain::equalsTo(bVec[i]));
         }
 
         // Output the primal objective value
         M->solve();
-        double objPrimal = M->primalObjValue();
+        double objPrimal = -M->primalObjValue();
         if (verbosity >= 1) {
             std::cout << "Objective value: " << objPrimal << std::endl;
         }
         
+        // Create a model
+        mosek::fusion::Model::t M2 = new mosek::fusion::Model(); auto _M2 = monty::finally([&]() {M2->dispose();});
+        if (verbosity >= 2) {
+            M2->setLogHandler([=](const std::string & msg) {std::cout << msg << std::flush;});
+        }
+        mosek::fusion::Variable::t yM = M2->variable(b.size(), mosek::fusion::Domain::unbounded());
+        M2->objective(mosek::fusion::ObjectiveSense::Maximize, mosek::fusion::Expr::dot(bM, yM));
+        mosek::fusion::Expression::t ee = mosek::fusion::Expr::constTerm(CM);
+        for (int i=0; i<As.size(); i++) {
+            ee = mosek::fusion::Expr::sub(ee, mosek::fusion::Expr::mul(AsM[i], yM->index(i)));
+        }
+        M2->constraint(ee, mosek::fusion::Domain::inPSDCone());
+
+        // Output the primal objective value
+        M2->solve();
+        double objDual = -M2->primalObjValue();
+        if (verbosity >= 1) {
+            std::cout << "Objective value of dual: " << objDual << std::endl;
+        }
+
         // Convert to the dual
         // b.y
         polynomial newObjective;
-        for (int i=0; i<bM.size(); i++) {
-            if (std::abs(bM[i]) > 1e-10) {
-                newObjective.push_back(std::make_pair(bM[i], stringToMonomial("<C" + std::to_string(i) + ">")));
+        for (int i=0; i<bVec.size(); i++) {
+            if (std::abs(bVec[i]) > 1e-10) {
+                newObjective.push_back(std::make_pair(bVec[i], stringToMonomial("<C" + std::to_string(i) + ">")));
             }
         }
         std::cout << "New Objective: " << newObjective << std::endl;
@@ -1388,7 +1414,7 @@ int main(int argc, char* argv[]) {
         momentMatrices = {newMomentMat};
         constraintsZero = {};
         constraintsPositive = {};
-        solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, true);
+        solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, false);
 
         return 0;
 
@@ -1396,8 +1422,8 @@ int main(int argc, char* argv[]) {
     } else if (testing == 2) {
 
 		// Run the main problem
-		std::vector<double> dualSol;
-        solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, false, dualSol);
+		//std::vector<double> dualSol;
+        //solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, false, dualSol);
 		
 		// Run the subproblem
 
