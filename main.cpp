@@ -5,6 +5,10 @@
 // Import MOSEK
 #include "fusion.h"
 
+// Optim
+#define OPTIM_ENABLE_EIGEN_WRAPPERS
+#include "optim.hpp"
+
 // Import Eigen
 #include <Eigen/Dense>
 
@@ -16,6 +20,7 @@ typedef std::vector<std::vector<polynomial>> polynomialMatrix;
 typedef std::vector<double> doubleVector;
 typedef std::vector<std::vector<double>> doubleMatrix;
 
+// Check if a polynomial is constant
 bool polynomialIsConstant(polynomial p) {
 
     // Check if it's zero
@@ -218,6 +223,40 @@ std::ostream& operator<<(std::ostream& os, const polynomial& p) {
 
 // When printing a polynomial matrix, print it as a string
 std::ostream& operator<<(std::ostream& os, const polynomialMatrix& m) {
+
+    // Determine the maximum width of each column
+    std::vector<int> columnWidths(m[0].size(), 0);
+    for (unsigned long int i=0; i<m.size(); i++) {
+        for (unsigned long int j=0; j<m[i].size(); j++) {
+            std::stringstream ss;
+            ss << m[i][j];
+            int sizeWhenWritten = ss.str().size();
+            columnWidths[j] = std::max(columnWidths[j], sizeWhenWritten);
+        }
+    }
+
+    // Iterate through the matrix
+    for (unsigned long int i=0; i<m.size(); i++) {
+        for (unsigned long int j=0; j<m[i].size(); j++) {
+            std::stringstream ss;
+            ss << m[i][j];
+            int sizeWhenWritten = ss.str().size();
+            for (unsigned long int k=0; k<columnWidths[j]-sizeWhenWritten; k++) {
+                ss << " ";
+            }
+            ss << " ";
+            os << ss.str();
+        }
+        os << std::endl;
+    }
+
+    // Return the stream
+    return os;
+
+}
+
+// When printing a matrix of doubles, print it as a string
+std::ostream& operator<<(std::ostream& os, const std::vector<std::vector<double>>& m) {
 
     // Determine the maximum width of each column
     std::vector<int> columnWidths(m[0].size(), 0);
@@ -1112,6 +1151,7 @@ int main(int argc, char* argv[]) {
     int verbosity = 1;
     int maxIters = 1000;
     std::string seed = "";
+    std::vector<std::string> extraMoments;
 
     // Process command-line args
     for (int i=1; i<argc; i++) {
@@ -1141,6 +1181,11 @@ int main(int argc, char* argv[]) {
         // Set the level
         } else if (argAsString == "-l") {
             level = std::stoi(argv[i+1]);
+            i++;
+
+        // If adding an extra moment to the top row
+        } else if (argAsString == "-e") {
+            extraMoments.push_back(std::string(argv[i+1]));
             i++;
 
         // Set the iteration limit
@@ -1218,6 +1263,15 @@ int main(int argc, char* argv[]) {
         std::cout << "Largest moment matrix has size " << largestMomentMatrix << std::endl;
     }
 
+    // If told to add extra to the top row
+    if (extraMoments.size() > 0) {
+        std::vector<polynomial> topRow = momentMatrices[0][0];
+        for (int i=0; i<extraMoments.size(); i++) {
+            topRow.push_back(stringToPolynomial(extraMoments[i]));
+        }
+        momentMatrices[0] = generateFromTopRow(topRow);
+    }
+
     // Define other constraints
     polynomial objective = bellFunc;
     std::vector<polynomial> constraintsZero;
@@ -1253,47 +1307,69 @@ int main(int argc, char* argv[]) {
         std::vector<doubleMatrix> As;
         std::vector<double> b;
         for (int i=0; i<momentMatrices[0].size(); i++) {
-            doubleMatrix A(matSize, doubleVector(matSize, 0));
-            A[i][i] = 1;
-            As.push_back(A);
-            b.push_back(1);
-        }
-        std::vector<monomial> alreadyDone;
-        for (int i=0; i<momentMatrices[0].size(); i++) {
-            for (int j=i+1; j<momentMatrices[0][i].size(); j++) {
+            for (int j=i; j<momentMatrices[0][i].size(); j++) {
 
-                // Check if we've already found all versions of this monom
-                monomial monToFind = momentMatrices[0][i][j][0].second;
-                if (std::find(alreadyDone.begin(), alreadyDone.end(), monToFind) != alreadyDone.end()) {
-                    continue;
+                // Trying to find the matrix relating this to other elements
+                doubleMatrix A(matSize, doubleVector(matSize, 0));
+                if (i == j) { 
+                    A[i][j] = 1;
                 } else {
-                    alreadyDone.push_back(monToFind);
+                    A[i][j] = 0.5;
                 }
+                double bVal = 0;
+                bool somethingFound = false;
 
-                // Find all monomials that are the same
-                std::vector<std::pair<int,int>> equalMonomLocs;
-                for (int k=i; k<momentMatrices[0].size(); k++) {
-                    for (int l=k+1; l<momentMatrices[0][k].size(); l++) {
-                        if (k == i && l == j) {
-                            continue;
+                // For each term in this poly, try to find an early term 
+                // that would reduce this to a constant
+                for (int k=0; k<momentMatrices[0][i][j].size(); k++) {
+
+                    // If it's a constant
+                    if (momentMatrices[0][i][j][k].second.size() == 0) {
+                        bVal += momentMatrices[0][i][j][k].first;
+                        somethingFound = true;
+                        continue;
+                    }
+
+                    // Otherwise find an earlier variable
+                    monomial monomToFind = momentMatrices[0][i][j][k].second;
+                    bool found = false;
+                    for (int l=0; l<momentMatrices[0].size(); l++) {
+                        for (int m=l; m<momentMatrices[0][l].size(); m++) {
+                            if (l*momentMatrices[0].size() + m >= i*momentMatrices[0].size() + j) {
+                                break;
+                            }
+                            if (momentMatrices[0][l][m].size() == 1 && momentMatrices[0][l][m][0].second == monomToFind) {
+                                if (l == m) { 
+                                    A[l][m] = -momentMatrices[0][i][j][k].first;
+                                } else {
+                                    A[l][m] = -momentMatrices[0][i][j][k].first / 2.0;
+                                }
+                                somethingFound = true;
+                                found = true;
+                                break;
+                            }
                         }
-                        if (momentMatrices[0][k][l].size() == 1 && momentMatrices[0][k][l][0].second == monToFind) {
-                            equalMonomLocs.push_back(std::make_pair(k,l));
+                        if (found) {
+                            break;
                         }
                     }
+
                 }
 
-                // For each equal monom, add a matrix
-                for (int k=0; k<equalMonomLocs.size(); k++) {
-                    doubleMatrix A(matSize, doubleVector(matSize, 0));
-                    A[i][j] = 1;
-                    A[equalMonomLocs[k].first][equalMonomLocs[k].second] = -1;
+                // Add this matrix
+                if (somethingFound) {
                     As.push_back(A);
-                    b.push_back(0);
+                    b.push_back(bVal);
                 }
 
             }
         }
+
+        // Output the A matrices
+        //std::cout << "A matrices: " << std::endl;
+        //for (int i=0; i<As.size(); i++) {
+            //std::cout << As[i] << std::endl;
+        //}
 
         // Convert the constraints to the dual objective b.y
         polynomial newObjective;
@@ -1334,12 +1410,44 @@ int main(int argc, char* argv[]) {
         std::vector<monomial> varNames;
         solveMOSEK(objectiveDual, momentMatricesDual, constraintsZeroDual, constraintsPositiveDual, verbosity, varNames, varVals);
 
-        // Using this dual, generate an unconstrained optimisation TODO
+        // Get the generic LL^T matrix
+        std::vector<polynomial> equals;
+        polynomialMatrix LLT = polynomialMatrix(matSize, polynomialVector(matSize, polynomial()));
+        for (int i=0; i<matSize; i++) {
+            for (int j=i; j<matSize; j++) {
+
+                // Generate this element of the generic LLT matrix
+                polynomial thisLLT;
+                thisLLT.push_back(std::make_pair(1.0, stringToMonomial("<C" + std::to_string(i*matSize + j) + "C" + std::to_string(j*matSize + j) + ">")));
+                for (int k=0; k<j; k++) {
+                    thisLLT.push_back(std::make_pair(-1.0, stringToMonomial("<C" + std::to_string(i*matSize + k) + "C" + std::to_string(j*matSize + k) + ">")));
+                }
+
+                // Now subtract the polynomial from the dual moment matrix
+                for (int k=0; k<momentMatricesDual[0][i][j].size(); k++) {
+                    thisLLT.push_back(std::make_pair(-momentMatricesDual[0][i][j][k].first, momentMatricesDual[0][i][j][k].second));
+                }
+
+                // Add this polynomial to the list
+                equals.push_back(thisLLT);
+
+                // Output this polynomial
+                std::cout << thisLLT << std::endl;
+
+            }
+        }
+
+        // Square these and sum TODO
+
+        // Optimise the result with LBFGS
 
 		return 0;
 
-	// Try the iterative approach TODO
+	// Try the iterative approach
     } else if (testing == 2) {
+
+        std::cout << "Primal moment matrix: " << std::endl;
+        std::cout << momentMatrices[0] << std::endl << std::endl;
 
         // Keep iterating, for now just a fixed number of times
         for (int iter=0; iter<maxIters; iter++) {
@@ -1375,8 +1483,13 @@ int main(int argc, char* argv[]) {
 
                     // Trying to find the matrix relating this to other elements
                     doubleMatrix A(matSize, doubleVector(matSize, 0));
-                    A[i][j] = 1;
+                    if (i == j) { 
+                        A[i][j] = 1;
+                    } else {
+                        A[i][j] = 0.5;
+                    }
                     double bVal = 0;
+                    bool somethingFound = false;
 
                     // For each term in this poly, try to find an early term 
                     // that would reduce this to a constant
@@ -1385,19 +1498,25 @@ int main(int argc, char* argv[]) {
                         // If it's a constant
                         if (momentMatrices[0][i][j][k].second.size() == 0) {
                             bVal += momentMatrices[0][i][j][k].first;
+                            somethingFound = true;
                             continue;
                         }
 
-                        // Otherwise find an earlier variable TODO
+                        // Otherwise find an earlier variable
                         monomial monomToFind = momentMatrices[0][i][j][k].second;
                         bool found = false;
-                        for (int l=0; l<i; l++) {
-                            for (int m=l+1; m<j; m++) {
-                                if (l == i && m == j) {
-                                    continue;
+                        for (int l=0; l<momentMatrices[0].size(); l++) {
+                            for (int m=l; m<momentMatrices[0][l].size(); m++) {
+                                if (l*momentMatrices[0].size() + m >= i*momentMatrices[0].size() + j) {
+                                    break;
                                 }
                                 if (momentMatrices[0][l][m].size() == 1 && momentMatrices[0][l][m][0].second == monomToFind) {
-                                    A[l][m] = -1;
+                                    if (l == m) { 
+                                        A[l][m] = -momentMatrices[0][i][j][k].first;
+                                    } else {
+                                        A[l][m] = -momentMatrices[0][i][j][k].first / 2.0;
+                                    }
+                                    somethingFound = true;
                                     found = true;
                                     break;
                                 }
@@ -1406,18 +1525,23 @@ int main(int argc, char* argv[]) {
                                 break;
                             }
                         }
-                        if (found) {
-                            break;
-                        }
 
                     }
 
                     // Add this matrix
-                    As.push_back(A);
-                    b.push_back(bVal);
+                    if (somethingFound) {
+                        As.push_back(A);
+                        b.push_back(bVal);
+                    }
 
                 }
             }
+
+            // Output the A matrices
+            //std::cout << "A matrices: " << std::endl;
+            //for (int i=0; i<As.size(); i++) {
+                //std::cout << As[i] << std::endl;
+            //}
 
             // Convert the constraints to the dual objective b.y
             polynomial newObjective;
@@ -1458,23 +1582,20 @@ int main(int argc, char* argv[]) {
             std::vector<monomial> varNames;
             solveMOSEK(objectiveDual, momentMatricesDual, constraintsZeroDual, constraintsPositiveDual, verbosity, varNames, varVals);
 
-            // TODO
-            if (iter > 0) {
-                return 0;
-            }
-
-            // Using this dual info, generate the sub-problem TODO
+            // Using this dual info, generate the sub-problem
             std::vector<polynomialMatrix> momentMatricesSub = generateAllMomentMatrices(bellFunc, level+1, subLevel, numToSample);
             Eigen::MatrixXd Y = replaceVariables(momentMatricesDual[0], varNames, varVals);
             std::cout << "Y: " << std::endl;
             std::cout << Y << std::endl << std::endl;
             polynomial objectiveSub;
-            for (int i=0; i<Y.rows(); i++) {
-                for (int j=i; j<Y.cols(); j++) {
-                    if (i == j) {
-                        objectiveSub.push_back(std::make_pair(-Y(i,j), momentMatricesSub[0][i][j][0].second));
-                    } else {
-                        objectiveSub.push_back(std::make_pair(-2.0*Y(i,j), momentMatricesSub[0][i][j][0].second));
+            for (int i=0; i<Y.rows()-iter; i++) {
+                for (int j=i; j<Y.cols()-iter; j++) {
+                    for (int k=0; k<momentMatricesSub[0][i][j].size(); k++) {
+                        if (i == j) {
+                            objectiveSub.push_back(std::make_pair(-Y(i,j), momentMatricesSub[0][i][j][k].second));
+                        } else {
+                            objectiveSub.push_back(std::make_pair(-2.0*Y(i,j), momentMatricesSub[0][i][j][k].second));
+                        }
                     }
                 }
             }
@@ -1489,13 +1610,19 @@ int main(int argc, char* argv[]) {
             std::vector<monomial> varNamesSub;
             double valSub = solveMOSEK(objectiveSub, momentMatricesSub, constraintsZeroSub, constraintsPositiveSub, verbosity, varNamesSub, varValsSub);
 
+            // Check for convergence
+            if (std::abs(valSub) < 1e-5) {
+                std::cout << "Converged due to sub-problem giving zero" << std::endl;
+                break;
+            }
+
             // Output the vars
             //std::cout << "Vars: " << std::endl;
             //for (int i=0; i<varNamesSub.size(); i++) {
                 //std::cout << varNamesSub[i] << " = " << varValsSub[i] << std::endl;
             //}
 
-            // Generate the new constraint
+            // Generate the new constraint 
             polynomial newPositivityCon = objectiveSub;
             newPositivityCon.push_back(std::make_pair(-valSub, monomial()));
             //for (int i=0; i<objectiveSub.size(); i++) {
@@ -1525,6 +1652,8 @@ int main(int argc, char* argv[]) {
             std::cout << momentMatrices[0] << std::endl << std::endl;
 
         }
+
+        return 0;
 
 	}
 
