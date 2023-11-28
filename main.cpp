@@ -1180,21 +1180,21 @@ double evalCommutingMonomWithout(const double& coeff, const monomial& monom, con
     return term;
 }
 
-// Cost/gradient function for optim TODO
+// Cost/gradient function for optim TODO try auto diff
 static double gradFunction(const Eigen::VectorXd& x, Eigen::VectorXd* gradOut, void* optData) {
     
     // Recast this generic pointer into the correct format
     optimData* optDataRecast = reinterpret_cast<optimData*>(optData);
 
-    // Output each variables
-    std::cout << "Variables: " << std::endl;
-    for (int i=0; i<x.size(); i++) {
-        if (i < optDataRecast->numD) {
-            std::cout << "D" << i << ": " << x(i) << std::endl;
-        } else {
-            std::cout << "C" << i - optDataRecast->numD << ": " << x(i) << std::endl;
-        }
-    }
+    // Output each variables DEBUG
+    //std::cout << "Variables: " << std::endl;
+    //for (int i=0; i<x.size(); i++) {
+        //if (i < optDataRecast->numD) {
+            //std::cout << "D" << i << ": " << x(i) << std::endl;
+        //} else {
+            //std::cout << "C" << i - optDataRecast->numD << ": " << x(i) << std::endl;
+        //}
+    //}
 
     // The cost is a combination of the objective and the equality constraints
     double cost = 0.0;
@@ -1207,7 +1207,8 @@ static double gradFunction(const Eigen::VectorXd& x, Eigen::VectorXd* gradOut, v
         for (int j=0; j<optDataRecast->equalityCons[i].size(); j++) {
             equalityConVals[i] += evalCommutingMonom(optDataRecast->equalityCons[i][j].first, optDataRecast->equalityCons[i][j].second, x, optDataRecast->numD);
         }
-        std::cout << "Equality constraint " << i << ": " << equalityConVals[i] << std::endl;
+        //DEBUG
+        //std::cout << "Equality constraint " << i << ": " << equalityConVals[i] << std::endl;
         cost += equalityConVals[i] * equalityConVals[i] * optDataRecast->penalty;
     }
 
@@ -1289,17 +1290,21 @@ static double gradFunction(const Eigen::VectorXd& x, Eigen::VectorXd* gradOut, v
             }
         }
 
-        // Output the gradient
-        std::cout << "Gradient: " << std::endl;
-        for (int i=0; i<gradOut->size(); i++) {
-            if (i < optDataRecast->numD) {
-                std::cout << "D" << i << ": " << (*gradOut)(i) << std::endl;
-            } else {
-                std::cout << "C" << i - optDataRecast->numD << ": " << (*gradOut)(i) << std::endl;
-            }
-        }
+        // Output the gradient DEBUG
+        //std::cout << "Gradient: " << std::endl;
+        //for (int i=0; i<gradOut->size(); i++) {
+            //if (i < optDataRecast->numD) {
+                //std::cout << "D" << i << ": " << (*gradOut)(i) << std::endl;
+            //} else {
+                //std::cout << "C" << i - optDataRecast->numD << ": " << (*gradOut)(i) << std::endl;
+            //}
+        //}
 
+    }
 
+    // TODO
+    if (cost < 2*std::sqrt(2)) {
+        cost = 2*std::sqrt(2);
     }
 
     // Return just the cost
@@ -1324,7 +1329,7 @@ int main(int argc, char* argv[]) {
     int numOutcomesB = 2;
     int level = 1;
     int subLevel = -1;
-    polynomial bellFunc;
+    polynomial bellFunc = stringToPolynomial("<A1B1>+<A1B2>+<A2B1>-<A2B2>");
     int testing = 0;
     int numToSample = 1000;
     int verbosity = 1;
@@ -1589,6 +1594,15 @@ int main(int argc, char* argv[]) {
         std::vector<monomial> varNames;
         solveMOSEK(objectiveDual, momentMatricesDual, constraintsZeroDual, constraintsPositiveDual, verbosity, varNames, varVals);
 
+        // Sort the varNames array by the names, based on the x.second for each x
+        std::sort(varNames.begin(), varNames.end(), [](const monomial& a, const monomial& b) {
+            if (a.size() > 0 && b.size() > 0) {
+                return a[0].second < b[0].second;
+            } else {
+                return a.size() < b.size();
+            }
+        });
+
         // Get the eigenvalues if we start with all zeros
         std::vector<std::vector<double>> eigenvectors;
         std::vector<double> eigenvalues;
@@ -1605,7 +1619,7 @@ int main(int argc, char* argv[]) {
         for (int i=0; i<newObjective.size(); i++) {
             for (int j=0; j<varNames.size(); j++) {
                 if (varNames[j] == newObjective[i].second) {
-                    varVals[j] += minEigenvalue;
+                    varVals[j] += minEigenvalue - 1e-8;
                     break;
                 }
             }
@@ -1625,6 +1639,11 @@ int main(int argc, char* argv[]) {
         std::cout << "Cholesky decomposition: " << std::endl;
         std::cout << L.transpose() << std::endl;
 
+        // Recostruct the moment matrix
+        Eigen::MatrixXd testMat = L * L.transpose();
+        std::cout << "Reconstructed moment matrix: " << std::endl;
+        std::cout << testMat << std::endl;
+
         // Get the generic LL^T matrix
         std::vector<polynomial> equals;
         polynomialMatrix LLT = polynomialMatrix(matSize, polynomialVector(matSize, polynomial()));
@@ -1642,6 +1661,9 @@ int main(int argc, char* argv[]) {
                     thisLLT.push_back(std::make_pair(-momentMatricesDual[0][i][j][k].first, momentMatricesDual[0][i][j][k].second));
                 }
 
+                // Combine any like terms
+                thisLLT = simplify(thisLLT);
+
                 // Add this polynomial to the list
                 equals.push_back(thisLLT);
 
@@ -1651,28 +1673,43 @@ int main(int argc, char* argv[]) {
             }
         }
 
+        // Count the vars needed, ignoring 1
+        int numD = varNames.size();
+        if (varNames[0] == monomial()) {
+            numD--;
+        }
+        int numVars = numD + matSize*(matSize+1)/2;
+        std::cout << "Num D: " << numD << std::endl;
+        std::cout << "Num vars: " << numVars << std::endl;
+
         // Set up the optimisation
-        int numVars = varNames.size() + matSize*(matSize+1)/2;
         Eigen::VectorXd x = Eigen::VectorXd::Zero(numVars);
         optimData optData;
         optData.objective = objectiveDual;
         optData.equalityCons = equals;
         optData.penalty = 1e8;
-        optData.numD = varNames.size();
+        optData.numD = numD;
+
+        // Output all the variable values
+        std::cout << "Variable values: " << std::endl;
+        for (int i=0; i<varNames.size(); i++) {
+            std::cout << varNames[i] << ": " << varVals[i] << std::endl;
+        }
 
         // Set the initial x
-        for (int i=0; i<varNames.size(); i++) {
+        for (int i=0; i<numD; i++) {
             x[i] = varVals[i+1];
         }
         for (int i=0; i<matSize; i++) {
             for (int j=i; j<matSize; j++) {
-                x[varNames.size() + cholLocToInd(i, j, matSize)] = L(j, i);
+                x[numD + cholLocToInd(i, j, matSize)] = L(j, i);
             }
         }
 
         // Check the initial cost
-        Eigen::VectorXd* gradData;
-        double startCost = gradFunction(x, gradData, &optData);
+        Eigen::VectorXd gradData = Eigen::VectorXd::Zero(numVars);
+        //gradData = new Eigen::VectorXd[numVars];
+        double startCost = gradFunction(x, &gradData, &optData);
         std::cout << "Starting cost: " << startCost << std::endl;
 
         // Settings for the optimiser
@@ -1680,19 +1717,20 @@ int main(int argc, char* argv[]) {
         settings.print_level = verbosity;
         settings.iter_max = maxIters;
         settings.rel_objfn_change_tol = 1e-10;
+        settings.gd_settings.method = 6;
 
         // Level 3 uses 500MB and takes about 2 seconds
         // Level 4 uses 10GB
 
         // Optimise TODO
         if (maxIters > 0) {
-            optData.penalty = 1e3;
-            for (int i=0; i<6; i++) {
+            optData.penalty = 1e0;
+            for (int i=0; i<10; i++) {
                 std::cout << "Optimising with " << numVars << " variables and penalty " << optData.penalty << std::endl;
-                //bool success = optim::nm(x, gradFunction, &optData, settings);
-                bool success = optim::lbfgs(x, gradFunction, &optData, settings);
-                std::cout << "Result = " << gradFunction(x, gradData, &optData) << std::endl;
-                break;
+                bool success = optim::nm(x, gradFunction, &optData, settings);
+                //bool success = optim::lbfgs(x, gradFunction, &optData, settings);
+                //bool success = optim::gd(x, gradFunction, &optData, settings);
+                std::cout << "Result = " << gradFunction(x, &gradData, &optData) << std::endl;
                 optData.penalty *= 10;
             }
         }
