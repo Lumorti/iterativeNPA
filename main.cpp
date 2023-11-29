@@ -12,6 +12,10 @@
 // Import Eigen
 #include <Eigen/Dense>
 
+// Autodiff
+#include <autodiff/forward/real.hpp>
+#include <autodiff/forward/real/eigen.hpp>
+
 // Define the type for the polynomials
 typedef std::vector<std::pair<char,int>> monomial;
 typedef std::vector<std::pair<double, monomial>> polynomial;
@@ -410,7 +414,6 @@ void getEigens(polynomialMatrix& momentMatrix, std::vector<monomial>& variables,
 
     // Replace each variable with its value
     Eigen::MatrixXd momentMatrixEigen = replaceVariables(momentMatrix, variables, varVals);
-    std::cout << momentMatrixEigen << std::endl;
 
     // Get the eigenvalues and vectors of this
     Eigen::EigenSolver<Eigen::MatrixXd> es(momentMatrixEigen);
@@ -433,8 +436,8 @@ void getEigens(polynomialMatrix& momentMatrix, std::vector<monomial>& variables,
 
 }
 
-// Given a monomila, reduce it to its simplest form
-monomial reduceMonomial(monomial mon_) {
+// Given a monomial, reduce it to its simplest form
+monomial reduceMonomial(monomial mon_, bool use01=false) {
 
     monomial mon = mon_;
 
@@ -447,15 +450,28 @@ monomial reduceMonomial(monomial mon_) {
         }
     }
 
-    // <A1A1> = <1>
-    int i = 0;
-    while (i < int(mon.size())-1) {
-        if (mon[i] == mon[i+1]) {
-            mon.erase(mon.begin()+i+1);
-            mon.erase(mon.begin()+i);
-            i = -1;
+    // <A1A1> = <A1>
+    if (use01) {
+        int i = 0;
+        while (i < int(mon.size())-1) {
+            if (mon[i] == mon[i+1]) {
+                mon.erase(mon.begin()+i);
+                i = -1;
+            }
+            i++;
         }
-        i++;
+
+    // <A1A1> = <1>
+    } else {
+        int i = 0;
+        while (i < int(mon.size())-1) {
+            if (mon[i] == mon[i+1]) {
+                mon.erase(mon.begin()+i+1);
+                mon.erase(mon.begin()+i);
+                i = -1;
+            }
+            i++;
+        }
     }
 
     return mon;
@@ -547,7 +563,7 @@ void addSingleMonomials(std::vector<monomial>& variables, polynomial functional)
 }
 
 // Generate a moment matrix given the top row
-polynomialMatrix generateFromTopRow(std::vector<monomial> monomsInTopRow) {
+polynomialMatrix generateFromTopRow(std::vector<monomial> monomsInTopRow, bool use01=false) {
 
     // Generate all combinations of the top row
     polynomialMatrix matrixToReturn = std::vector<std::vector<polynomial>>(monomsInTopRow.size(), std::vector<polynomial>(monomsInTopRow.size()));
@@ -564,7 +580,7 @@ polynomialMatrix generateFromTopRow(std::vector<monomial> monomsInTopRow) {
             }
 
             // Reduce the monomial
-            newMonomial = reduceMonomial(newMonomial);
+            newMonomial = reduceMonomial(newMonomial, use01);
 
             // Set the matrix elements
             matrixToReturn[i][j] = polynomial(1, std::make_pair(1, newMonomial));
@@ -579,7 +595,7 @@ polynomialMatrix generateFromTopRow(std::vector<monomial> monomsInTopRow) {
 }
 
 // Generate a moment matrix given the top row as polynomials
-polynomialMatrix generateFromTopRow(std::vector<polynomial> monomsInTopRow) {
+polynomialMatrix generateFromTopRow(std::vector<polynomial> monomsInTopRow, bool use01=false) {
 
     // Generate all combinations of the top row
     polynomialMatrix matrixToReturn = std::vector<std::vector<polynomial>>(monomsInTopRow.size(), std::vector<polynomial>(monomsInTopRow.size()));
@@ -601,7 +617,7 @@ polynomialMatrix generateFromTopRow(std::vector<polynomial> monomsInTopRow) {
                     }
 
                     // Reduce the monomial
-                    newMonomial = reduceMonomial(newMonomial);
+                    newMonomial = reduceMonomial(newMonomial, use01);
 
                     // Add to the polynomial
                     bool found = false;
@@ -632,7 +648,7 @@ polynomialMatrix generateFromTopRow(std::vector<polynomial> monomsInTopRow) {
 
 }
 // Generate all moment matrices for a given level given a polynomial
-std::vector<polynomialMatrix> generateAllMomentMatrices(polynomial functional, int level, int subLevel=-1, int numToSample=-1) {
+std::vector<polynomialMatrix> generateAllMomentMatrices(polynomial functional, int level, int subLevel=-1, int numToSample=-1, bool use01=false) {
 
     // First get the list of all moments used by iterating through the polynomial
     std::vector<monomial> variables;
@@ -643,7 +659,7 @@ std::vector<polynomialMatrix> generateAllMomentMatrices(polynomial functional, i
     if (level >= 1) {
         for (long unsigned int i=0; i<variables.size(); i++) {
             monomial currentMonomial = {variables[i][0]};
-            currentMonomial = reduceMonomial(currentMonomial);
+            currentMonomial = reduceMonomial(currentMonomial, use01);
             if (currentMonomial.size() > 0 && std::find(monomsInTopRow.begin(), monomsInTopRow.end(), currentMonomial) == monomsInTopRow.end()) {
                 monomsInTopRow.push_back(currentMonomial);
             }
@@ -653,7 +669,7 @@ std::vector<polynomialMatrix> generateAllMomentMatrices(polynomial functional, i
         for (long unsigned int i=0; i<variables.size(); i++) {
             for (long unsigned int j=0; j<variables.size(); j++) {
                 monomial currentMonomial = {variables[i][0], variables[j][0]};
-                currentMonomial = reduceMonomial(currentMonomial);
+                currentMonomial = reduceMonomial(currentMonomial, use01);
                 if (currentMonomial.size() > 0 && std::find(monomsInTopRow.begin(), monomsInTopRow.end(), currentMonomial) == monomsInTopRow.end()) {
                     monomsInTopRow.push_back(currentMonomial);
                 }
@@ -665,7 +681,7 @@ std::vector<polynomialMatrix> generateAllMomentMatrices(polynomial functional, i
             for (long unsigned int j=0; j<variables.size(); j++) {
                 for (long unsigned int k=0; k<variables.size(); k++) {
                     monomial currentMonomial = {variables[i][0], variables[j][0], variables[k][0]};
-                    currentMonomial = reduceMonomial(currentMonomial);
+                    currentMonomial = reduceMonomial(currentMonomial, use01);
                     if (currentMonomial.size() > 0 && std::find(monomsInTopRow.begin(), monomsInTopRow.end(), currentMonomial) == monomsInTopRow.end()) {
                         monomsInTopRow.push_back(currentMonomial);
                     }
@@ -679,7 +695,7 @@ std::vector<polynomialMatrix> generateAllMomentMatrices(polynomial functional, i
                 for (long unsigned int k=0; k<variables.size(); k++) {
                     for (long unsigned int l=0; l<variables.size(); l++) {
                         monomial currentMonomial = {variables[i][0], variables[j][0], variables[k][0], variables[l][0]};
-                        currentMonomial = reduceMonomial(currentMonomial);
+                        currentMonomial = reduceMonomial(currentMonomial, use01);
                         if (currentMonomial.size() > 0 && std::find(monomsInTopRow.begin(), monomsInTopRow.end(), currentMonomial) == monomsInTopRow.end()) {
                             monomsInTopRow.push_back(currentMonomial);
                         }
@@ -695,7 +711,7 @@ std::vector<polynomialMatrix> generateAllMomentMatrices(polynomial functional, i
                     for (long unsigned int l=0; l<variables.size(); l++) {
                         for (long unsigned int m=0; m<variables.size(); m++) {
                             monomial currentMonomial = {variables[i][0], variables[j][0], variables[k][0], variables[l][0], variables[m][0]};
-                            currentMonomial = reduceMonomial(currentMonomial);
+                            currentMonomial = reduceMonomial(currentMonomial, use01);
                             if (currentMonomial.size() > 0 && std::find(monomsInTopRow.begin(), monomsInTopRow.end(), currentMonomial) == monomsInTopRow.end()) {
                                 monomsInTopRow.push_back(currentMonomial);
                             }
@@ -713,7 +729,7 @@ std::vector<polynomialMatrix> generateAllMomentMatrices(polynomial functional, i
                         for (long unsigned int m=0; m<variables.size(); m++) {
                             for (long unsigned int n=0; n<variables.size(); n++) {
                                 monomial currentMonomial = {variables[i][0], variables[j][0], variables[k][0], variables[l][0], variables[m][0], variables[n][0]};
-                                currentMonomial = reduceMonomial(currentMonomial);
+                                currentMonomial = reduceMonomial(currentMonomial, use01);
                                 if (currentMonomial.size() > 0 && std::find(monomsInTopRow.begin(), monomsInTopRow.end(), currentMonomial) == monomsInTopRow.end()) {
                                     monomsInTopRow.push_back(currentMonomial);
                                 }
@@ -733,7 +749,7 @@ std::vector<polynomialMatrix> generateAllMomentMatrices(polynomial functional, i
                             for (long unsigned int n=0; n<variables.size(); n++) {
                                 for (long unsigned int o=0; o<variables.size(); o++) {
                                     monomial currentMonomial = {variables[i][0], variables[j][0], variables[k][0], variables[l][0], variables[m][0], variables[n][0], variables[o][0]};
-                                    currentMonomial = reduceMonomial(currentMonomial);
+                                    currentMonomial = reduceMonomial(currentMonomial, use01);
                                     if (currentMonomial.size() > 0 && std::find(monomsInTopRow.begin(), monomsInTopRow.end(), currentMonomial) == monomsInTopRow.end()) {
                                         monomsInTopRow.push_back(currentMonomial);
                                     }
@@ -789,7 +805,7 @@ std::vector<polynomialMatrix> generateAllMomentMatrices(polynomial functional, i
         }
 
         // Form that matrix
-        polynomialMatrix newMatrix = generateFromTopRow(monomsInTopRowComb);
+        polynomialMatrix newMatrix = generateFromTopRow(monomsInTopRowComb, use01);
         matricesToReturn.push_back(newMatrix);
 
     }
@@ -857,7 +873,7 @@ void addVariables(std::vector<monomial>& variables, polynomial toAdd) {
 }
 
 // Convert to MOSEK form and solve
-double solveMOSEK(polynomial obj, std::vector<polynomialMatrix>& psd, std::vector<polynomial> constraintsZero, std::vector<polynomial> constraintsPositive, int verbosity, std::vector<monomial>& variables, std::vector<double>& variableValues) {
+double solveMOSEK(polynomial obj, std::vector<polynomialMatrix>& psd, std::vector<polynomial> constraintsZero, std::vector<polynomial> constraintsPositive, int verbosity, std::vector<monomial>& variables, std::vector<double>& variableValues, bool use01=false) {
 
     // Get the list of variables
     int oneIndex = 0;
@@ -1024,6 +1040,11 @@ double solveMOSEK(polynomial obj, std::vector<polynomialMatrix>& psd, std::vecto
     // Create the main variable vector
     mosek::fusion::Variable::t xM = M->variable(variables.size());
 
+    // If we use 0/1 rather than +1/-1, constrain to be in [0,1]
+    if (use01) {
+        M->constraint(xM, mosek::fusion::Domain::inRange(0.0, 1.0));
+    }
+
     // The objective function
     M->objective(mosek::fusion::ObjectiveSense::Maximize, mosek::fusion::Expr::dot(cM, xM));
 
@@ -1133,13 +1154,6 @@ double solveMOSEK(polynomial obj, std::vector<polynomialMatrix>& psd, std::vecto
 
 }
 
-// Wrapper in case vars aren't needed
-double solveMOSEK(polynomial obj, std::vector<polynomialMatrix>& psd, std::vector<polynomial> constraintsZero, std::vector<polynomial> constraintsPositive, int verbosity) {
-    std::vector<monomial> variables;
-    std::vector<double> variableValues;
-    return solveMOSEK(obj, psd, constraintsZero, constraintsPositive, verbosity, variables, variableValues);
-}
-
 // The structure used to hold the data for the optimisation
 struct optimData {
     int numD;
@@ -1147,6 +1161,21 @@ struct optimData {
     polynomial objective;
     std::vector<polynomial> equalityCons;
 };
+
+// Given a monomial and an autodiff vector, evaluate the monomial
+autodiff::real evalCommutingMonom(const double& coeff, const monomial& monom, const autodiff::ArrayXreal& x, const int& numD) {
+    autodiff::real term = coeff;
+    if (monom.size() > 0) {
+        for (int j=0; j<monom.size(); j++) {
+            if (monom[j].first == 'D') {
+                term *= x(monom[j].second);
+            } else {
+                term *= x(monom[j].second + numD);
+            }
+        }
+    }
+    return term;
+}
 
 // Given a monomial and an Eigen vector, evaluate the monomial
 double evalCommutingMonom(const double& coeff, const monomial& monom, const Eigen::VectorXd& x, const int& numD) {
@@ -1180,7 +1209,55 @@ double evalCommutingMonomWithout(const double& coeff, const monomial& monom, con
     return term;
 }
 
-// Cost/gradient function for optim TODO try auto diff
+
+autodiff::real optFunctionAD(const autodiff::ArrayXreal& x, const optimData* optDataRecast) {
+
+    // The cost is a combination of the objective and the equality constraints
+    autodiff::real cost = 0.0;
+    for (int i=0; i<optDataRecast->objective.size(); i++) {
+        cost -= evalCommutingMonom(optDataRecast->objective[i].first, optDataRecast->objective[i].second, x, optDataRecast->numD);
+    }
+    std::vector<double> equalityConVals(optDataRecast->equalityCons.size(), 0.0);
+    for (int i=0; i<optDataRecast->equalityCons.size(); i++) {
+        autodiff::real equalityConVal = 0.0;
+        for (int j=0; j<optDataRecast->equalityCons[i].size(); j++) {
+            equalityConVal += evalCommutingMonom(optDataRecast->equalityCons[i][j].first, optDataRecast->equalityCons[i][j].second, x, optDataRecast->numD);
+        }
+        //DEBUG
+        //std::cout << "Equality constraint " << i << ": " << equalityConVals[i] << std::endl;
+        cost += equalityConVal * equalityConVal * optDataRecast->penalty;
+    }
+
+    return cost;
+
+}
+
+// TODO
+double optFunction(const Eigen::VectorXd& x, Eigen::VectorXd* grad_out, void* optData) {
+
+    // Recast this generic pointer into the correct format
+    optimData* optDataRecast = reinterpret_cast<optimData*>(optData);
+
+    // Using the types from autodiff
+    autodiff::real u;
+    autodiff::ArrayXreal xd = x.eval();
+
+    // If requested, compute the gradient alongside the function using auto diff
+    if (grad_out) {
+        Eigen::VectorXd grad_tmp = autodiff::gradient(optFunctionAD, autodiff::wrt(xd), autodiff::at(xd, optDataRecast), u);
+        *grad_out = grad_tmp;
+
+    // Otherwise, just evaluate the function
+    } else {
+        u = optFunctionAD(xd, optDataRecast);
+    }
+
+    // Convert to double and return
+    return u.val();
+
+}
+
+// Cost/gradient function for optim
 static double gradFunction(const Eigen::VectorXd& x, Eigen::VectorXd* gradOut, void* optData) {
     
     // Recast this generic pointer into the correct format
@@ -1302,11 +1379,6 @@ static double gradFunction(const Eigen::VectorXd& x, Eigen::VectorXd* gradOut, v
 
     }
 
-    // TODO
-    if (cost < 2*std::sqrt(2)) {
-        cost = 2*std::sqrt(2);
-    }
-
     // Return just the cost
     return cost;
 
@@ -1334,7 +1406,9 @@ int main(int argc, char* argv[]) {
     int numToSample = 1000;
     int verbosity = 1;
     int maxIters = 1000;
+    bool use01 = false;
     std::string seed = "";
+    std::string problemName = "CHSH";
     std::vector<std::string> extraMoments;
 
     // Process command-line args
@@ -1352,15 +1426,24 @@ int main(int argc, char* argv[]) {
         // CHSH (c = 2, q = 2sqrt(2) w/ level 1)
         } else if (argAsString == "--chsh" || argAsString == "--CHSH") {
             bellFunc = stringToPolynomial("<A1B1>+<A1B2>+<A2B1>-<A2B2>");
+            problemName = "CHSH";
 
-        // I3322
-        // however for now it's l1 = 5.5, l2 = 5.00631, l3 (88= 5.0035, l4 = 
+        // If told to use a 0/1 output
+        } else if (argAsString == "-01") {
+            use01 = true;
+
+        // I3322 TODO
         // l1 (7x7) = 5.5
         // l2 (28x28) = 5.00612
         // l3 (88x88) = 5.0035
         // l4 (244x244) = 5.0035
         } else if (argAsString == "--I3322" || argAsString == "--i3322") {
-            bellFunc = stringToPolynomial("<A1>-<A2>+<B1>-<B2>-<A1B1>+<A1B2>+<A2B1>-<A2B2>+<A1B3>+<A2B3>+<A3B1>+<A3B2>");
+            if (use01) {
+                bellFunc = stringToPolynomial("-<A2>-<B1>-2<B2>+<A1B1>+<A1B2>+<A2B1>+<A2B2>-<A1B3>+<A2B3>-<A3B1>+<A3B2>");
+            } else {
+                bellFunc = stringToPolynomial("<A1>-<A2>+<B1>-<B2>-<A1B1>+<A1B2>+<A2B1>-<A2B2>+<A1B3>+<A2B3>+<A3B1>+<A3B2>");
+            }
+            problemName = "I3322";
 
         // Set the level
         } else if (argAsString == "-l") {
@@ -1417,6 +1500,7 @@ int main(int argc, char* argv[]) {
             std::cout << "  -S <str>        Seed for the random number generator" << std::endl;
             std::cout << "  -v <num>        Verbosity level" << std::endl;
             std::cout << "  -t              Test the moment matrix" << std::endl;
+            std::cout << "  -01             Use 0/1 output instead of -1/1" << std::endl;
             return 0;
 
         // Otherwise we don't know what this is
@@ -1435,7 +1519,7 @@ int main(int argc, char* argv[]) {
     }
 
     // Define the moment matrix
-    std::vector<polynomialMatrix> momentMatrices = generateAllMomentMatrices(bellFunc, level, subLevel, numToSample);
+    std::vector<polynomialMatrix> momentMatrices = generateAllMomentMatrices(bellFunc, level, subLevel, numToSample, use01);
     if (verbosity >= 1) {
         std::cout << "Generated " << momentMatrices.size() << " moment matrices" << std::endl;
         int largestMomentMatrix = 0;
@@ -1453,7 +1537,16 @@ int main(int argc, char* argv[]) {
         for (int i=0; i<extraMoments.size(); i++) {
             topRow.push_back(stringToPolynomial(extraMoments[i]));
         }
-        momentMatrices[0] = generateFromTopRow(topRow);
+        momentMatrices[0] = generateFromTopRow(topRow, use01);
+    }
+
+    // If using zero-one output, our diagonals aren't 1
+    if (use01) {
+        for (int i=0; i<momentMatrices.size(); i++) {
+            for (int j=0; j<momentMatrices[i].size(); j++) {
+                momentMatrices[i][j][j] = momentMatrices[i][j][0];
+            }
+        }
     }
 
     // Define other constraints
@@ -1592,7 +1685,7 @@ int main(int argc, char* argv[]) {
         std::vector<polynomial> constraintsPositiveDual = {};
         std::vector<double> varVals;
         std::vector<monomial> varNames;
-        solveMOSEK(objectiveDual, momentMatricesDual, constraintsZeroDual, constraintsPositiveDual, verbosity, varNames, varVals);
+        solveMOSEK(objectiveDual, momentMatricesDual, constraintsZeroDual, constraintsPositiveDual, verbosity, varNames, varVals, use01);
 
         // Sort the varNames array by the names, based on the x.second for each x
         std::sort(varNames.begin(), varNames.end(), [](const monomial& a, const monomial& b) {
@@ -1708,7 +1801,6 @@ int main(int argc, char* argv[]) {
 
         // Check the initial cost
         Eigen::VectorXd gradData = Eigen::VectorXd::Zero(numVars);
-        //gradData = new Eigen::VectorXd[numVars];
         double startCost = gradFunction(x, &gradData, &optData);
         std::cout << "Starting cost: " << startCost << std::endl;
 
@@ -1718,20 +1810,25 @@ int main(int argc, char* argv[]) {
         settings.iter_max = maxIters;
         settings.rel_objfn_change_tol = 1e-10;
         settings.gd_settings.method = 6;
+        settings.lbfgs_settings.par_M = 10;
+        settings.lbfgs_settings.wolfe_cons_1 = 1e-3;
+        settings.lbfgs_settings.wolfe_cons_2 = 0.8;
 
         // Level 3 uses 500MB and takes about 2 seconds
         // Level 4 uses 10GB
 
         // Optimise TODO
         if (maxIters > 0) {
-            optData.penalty = 1e0;
+            optData.penalty = 1e3;
             for (int i=0; i<10; i++) {
                 std::cout << "Optimising with " << numVars << " variables and penalty " << optData.penalty << std::endl;
-                bool success = optim::nm(x, gradFunction, &optData, settings);
-                //bool success = optim::lbfgs(x, gradFunction, &optData, settings);
-                //bool success = optim::gd(x, gradFunction, &optData, settings);
+                //bool success = optim::nm(x, optFunction, &optData, settings);
+                //bool success = optim::nm(x, gradFunction, &optData, settings);
+                bool success = optim::lbfgs(x, optFunction, &optData, settings);
+                //bool success = optim::bfgs(x, optFunction, &optData, settings);
+                //bool success = optim::gd(x, optFunction, &optData, settings);
                 std::cout << "Result = " << gradFunction(x, &gradData, &optData) << std::endl;
-                optData.penalty *= 10;
+                optData.penalty *= 2;
             }
         }
 
@@ -1762,8 +1859,17 @@ int main(int argc, char* argv[]) {
     }
 
     // Convert to MOSEK form and solve
-    double res = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity);
+    std::vector<monomial> varNames;
+    std::vector<double> varVals;
+    double res = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, varNames, varVals, use01);
     std::cout << "Result: " << res << std::endl;
+
+    // If I3322, convert to the 0/1 version too
+    if (problemName == "I3322") {
+        polynomial objective01 = stringToPolynomial("-<A2>-<B1>-2<B2>+<A1B1>+<A1B2>+<A2B1>+<A2B2>-<A1B3>+<A2B3>-<A3B1>+<A3B2>");
+        double res2 = evaluatePolynomial(objective01, varNames, varVals);
+        std::cout << "Result in 0/1: " << res2 << std::endl;
+    }
 
     // Exit without errors
     return 0;
