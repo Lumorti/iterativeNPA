@@ -437,11 +437,10 @@ void getEigens(polynomialMatrix& momentMatrix, std::vector<monomial>& variables,
 }
 
 // Given a monomial, reduce it to its simplest form
-monomial reduceMonomial(monomial mon_, bool use01=false) {
-
-    monomial mon = mon_;
+monomial reduceMonomial(monomial mon_, bool use01=false, bool trySwap=true) {
 
     // Sort the monomial as much as we can
+    monomial mon = mon_;
     for (int i=0; i<mon.size(); i++) {
         for (int j=0; j<int(mon.size())-1; j++) {
             if (mon[j].first != mon[j+1].first && mon[j] > mon[j+1]) {
@@ -471,6 +470,15 @@ monomial reduceMonomial(monomial mon_, bool use01=false) {
                 i = -1;
             }
             i++;
+        }
+    }
+
+    // Flip it to see if it's smaller
+    if (trySwap) {
+        monomial monFlipped = mon;
+        std::reverse(monFlipped.begin(), monFlipped.end());
+        if (monFlipped < mon) {
+            mon = monFlipped;
         }
     }
 
@@ -659,7 +667,7 @@ std::vector<polynomialMatrix> generateAllMomentMatrices(polynomial functional, i
     if (level >= 1) {
         for (long unsigned int i=0; i<variables.size(); i++) {
             monomial currentMonomial = {variables[i][0]};
-            currentMonomial = reduceMonomial(currentMonomial, use01);
+            currentMonomial = reduceMonomial(currentMonomial, use01, false);
             if (currentMonomial.size() > 0 && std::find(monomsInTopRow.begin(), monomsInTopRow.end(), currentMonomial) == monomsInTopRow.end()) {
                 monomsInTopRow.push_back(currentMonomial);
             }
@@ -669,7 +677,7 @@ std::vector<polynomialMatrix> generateAllMomentMatrices(polynomial functional, i
         for (long unsigned int i=0; i<variables.size(); i++) {
             for (long unsigned int j=0; j<variables.size(); j++) {
                 monomial currentMonomial = {variables[i][0], variables[j][0]};
-                currentMonomial = reduceMonomial(currentMonomial, use01);
+                currentMonomial = reduceMonomial(currentMonomial, use01, false);
                 if (currentMonomial.size() > 0 && std::find(monomsInTopRow.begin(), monomsInTopRow.end(), currentMonomial) == monomsInTopRow.end()) {
                     monomsInTopRow.push_back(currentMonomial);
                 }
@@ -681,7 +689,7 @@ std::vector<polynomialMatrix> generateAllMomentMatrices(polynomial functional, i
             for (long unsigned int j=0; j<variables.size(); j++) {
                 for (long unsigned int k=0; k<variables.size(); k++) {
                     monomial currentMonomial = {variables[i][0], variables[j][0], variables[k][0]};
-                    currentMonomial = reduceMonomial(currentMonomial, use01);
+                    currentMonomial = reduceMonomial(currentMonomial, use01, false);
                     if (currentMonomial.size() > 0 && std::find(monomsInTopRow.begin(), monomsInTopRow.end(), currentMonomial) == monomsInTopRow.end()) {
                         monomsInTopRow.push_back(currentMonomial);
                     }
@@ -695,7 +703,7 @@ std::vector<polynomialMatrix> generateAllMomentMatrices(polynomial functional, i
                 for (long unsigned int k=0; k<variables.size(); k++) {
                     for (long unsigned int l=0; l<variables.size(); l++) {
                         monomial currentMonomial = {variables[i][0], variables[j][0], variables[k][0], variables[l][0]};
-                        currentMonomial = reduceMonomial(currentMonomial, use01);
+                        currentMonomial = reduceMonomial(currentMonomial, use01, false);
                         if (currentMonomial.size() > 0 && std::find(monomsInTopRow.begin(), monomsInTopRow.end(), currentMonomial) == monomsInTopRow.end()) {
                             monomsInTopRow.push_back(currentMonomial);
                         }
@@ -711,7 +719,7 @@ std::vector<polynomialMatrix> generateAllMomentMatrices(polynomial functional, i
                     for (long unsigned int l=0; l<variables.size(); l++) {
                         for (long unsigned int m=0; m<variables.size(); m++) {
                             monomial currentMonomial = {variables[i][0], variables[j][0], variables[k][0], variables[l][0], variables[m][0]};
-                            currentMonomial = reduceMonomial(currentMonomial, use01);
+                            currentMonomial = reduceMonomial(currentMonomial, use01, false);
                             if (currentMonomial.size() > 0 && std::find(monomsInTopRow.begin(), monomsInTopRow.end(), currentMonomial) == monomsInTopRow.end()) {
                                 monomsInTopRow.push_back(currentMonomial);
                             }
@@ -729,7 +737,7 @@ std::vector<polynomialMatrix> generateAllMomentMatrices(polynomial functional, i
                         for (long unsigned int m=0; m<variables.size(); m++) {
                             for (long unsigned int n=0; n<variables.size(); n++) {
                                 monomial currentMonomial = {variables[i][0], variables[j][0], variables[k][0], variables[l][0], variables[m][0], variables[n][0]};
-                                currentMonomial = reduceMonomial(currentMonomial, use01);
+                                currentMonomial = reduceMonomial(currentMonomial, use01, false);
                                 if (currentMonomial.size() > 0 && std::find(monomsInTopRow.begin(), monomsInTopRow.end(), currentMonomial) == monomsInTopRow.end()) {
                                     monomsInTopRow.push_back(currentMonomial);
                                 }
@@ -749,7 +757,7 @@ std::vector<polynomialMatrix> generateAllMomentMatrices(polynomial functional, i
                             for (long unsigned int n=0; n<variables.size(); n++) {
                                 for (long unsigned int o=0; o<variables.size(); o++) {
                                     monomial currentMonomial = {variables[i][0], variables[j][0], variables[k][0], variables[l][0], variables[m][0], variables[n][0], variables[o][0]};
-                                    currentMonomial = reduceMonomial(currentMonomial, use01);
+                                    currentMonomial = reduceMonomial(currentMonomial, use01, false);
                                     if (currentMonomial.size() > 0 && std::find(monomsInTopRow.begin(), monomsInTopRow.end(), currentMonomial) == monomsInTopRow.end()) {
                                         monomsInTopRow.push_back(currentMonomial);
                                     }
@@ -1865,10 +1873,8 @@ int main(int argc, char* argv[]) {
     std::cout << "Result: " << res << std::endl;
 
     // If I3322, convert to the 0/1 version too
-    if (problemName == "I3322") {
-        polynomial objective01 = stringToPolynomial("-<A2>-<B1>-2<B2>+<A1B1>+<A1B2>+<A2B1>+<A2B2>-<A1B3>+<A2B3>-<A3B1>+<A3B2>");
-        double res2 = evaluatePolynomial(objective01, varNames, varVals);
-        std::cout << "Result in 0/1: " << res2 << std::endl;
+    if (problemName == "I3322" && !use01) {
+        std::cout << "Result in 0/1: " << (res/4.0)-1.0 << std::endl;
     }
 
     // Exit without errors
