@@ -2047,6 +2047,31 @@ int main(int argc, char* argv[]) {
 
         return 0;
 
+    // TODO check distance between sets
+    } else if (testing == 3) {
+
+        // Pick a random objective
+        polynomial objective = stringToPolynomial("<A1>+<A2>+<A3>+<B1>+<B2>+<B3>+<A1B1>+<A1B2>+<A1B3>+<A2B1>+<A2B2>+<A2B3>+<A3B1>+<A3B2>+<A3B3>");
+        for (int i=0; i<objective.size(); i++) {
+            objective[i].first = 2.0*((double)rand()/(double)RAND_MAX)-1.0;
+        }
+
+        // Perform level 1 optimization
+        std::vector<polynomialMatrix> momentMatrices = generateAllMomentMatrices(objective, 1, 1, 1, use01);
+        std::vector<polynomial> constraintsZero = {};
+        std::vector<polynomial> constraintsPositive = {};
+        std::vector<monomial> varNames;
+        std::vector<double> varVals;
+        double L1 = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, varNames, varVals, use01);
+
+        // Perform level 2 optimization
+        momentMatrices = generateAllMomentMatrices(objective, 2, 1, 1, use01);
+        varNames = {};
+        varVals = {};
+        double L2 = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, varNames, varVals, use01);
+
+        return 0;
+
     }
 
     // Output the problem
