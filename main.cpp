@@ -1440,7 +1440,7 @@ int main(int argc, char* argv[]) {
         } else if (argAsString == "-01") {
             use01 = true;
 
-        // I3322 TODO
+        // I3322
         // l1 (7x7) = 5.5
         // l2 (28x28) = 5.00612
         // l3 (88x88) = 5.0035
@@ -1826,7 +1826,7 @@ int main(int argc, char* argv[]) {
         // Level 3 uses 500MB and takes about 2 seconds
         // Level 4 uses 10GB
 
-        // Optimise TODO
+        // Optimise
         if (maxIters > 0) {
             optData.penalty = 1e3;
             for (int i=0; i<10; i++) {
@@ -1849,8 +1849,19 @@ int main(int argc, char* argv[]) {
         // Keep iterating, for now just a fixed number of times
         for (int iter=0; iter<maxIters; iter++) {
 
-            // Put into into standard SDP form
-            // min C.X s.t. A.X = b, X >= 0
+            // Get the L1 solution
+            std::vector<monomial> varNamesL1;
+            std::vector<double> varValsL1;
+            std::vector<polynomialMatrix> momentMatricesL1 = generateAllMomentMatrices(bellFunc, 1, subLevel, numToSample, use01);
+            std::vector<polynomialMatrix> momentMatricesL2 = generateAllMomentMatrices(bellFunc, 2, subLevel, numToSample, use01);
+            double resL1 = solveMOSEK(objective, momentMatricesL1, constraintsZero, constraintsPositive, verbosity, varNamesL1, varValsL1, use01);
+            Eigen::MatrixXd X = replaceVariables(momentMatricesL1[0], varNamesL1, varValsL1);
+            std::cout << "L1 result: " << resL1 << std::endl;
+            std::cout << "L1 solution: " << std::endl;
+            std::cout << X << std::endl << std::endl;
+
+            // Then find the dual for the L2
+            momentMatrices = momentMatricesL2;
 
             // Define C
             int matSize = momentMatrices[0].size();
@@ -1965,6 +1976,20 @@ int main(int argc, char* argv[]) {
             std::cout << "Dual moment matrix: " << std::endl;
             std::cout << newMomentMat << std::endl << std::endl;
 
+            // TODO objective being the inner product with the primal solution
+            newObjective = polynomial();
+            for (int i=0; i<X.rows(); i++) {
+                for (int j=i; j<X.cols(); j++) {
+                    for (int k=0; k<newMomentMat[i][j].size(); k++) {
+                        if (i == j) {
+                            newObjective.push_back(std::make_pair(X(i,j), newMomentMat[i][j][k].second));
+                        } else {
+                            newObjective.push_back(std::make_pair(2.0*X(i,j), newMomentMat[i][j][k].second));
+                        }
+                    }
+                }
+            }
+
             // Solve the dual
             polynomial objectiveDual = newObjective;
             std::vector<polynomialMatrix> momentMatricesDual = {newMomentMat};
@@ -1973,6 +1998,8 @@ int main(int argc, char* argv[]) {
             std::vector<double> varVals;
             std::vector<monomial> varNames;
             solveMOSEK(objectiveDual, momentMatricesDual, constraintsZeroDual, constraintsPositiveDual, verbosity, varNames, varVals);
+
+            return 0;
 
             // Using this dual info, generate the sub-problem
             std::vector<polynomialMatrix> momentMatricesSub = generateAllMomentMatrices(bellFunc, level+1, subLevel, numToSample, use01);
@@ -2050,25 +2077,57 @@ int main(int argc, char* argv[]) {
     // TODO check distance between sets
     } else if (testing == 3) {
 
-        // Pick a random objective
-        polynomial objective = stringToPolynomial("<A1>+<A2>+<A3>+<B1>+<B2>+<B3>+<A1B1>+<A1B2>+<A1B3>+<A2B1>+<A2B2>+<A2B3>+<A3B1>+<A3B2>+<A3B3>");
-        for (int i=0; i<objective.size(); i++) {
-            objective[i].first = 2.0*((double)rand()/(double)RAND_MAX)-1.0;
-        }
-
-        // Perform level 1 optimization
-        std::vector<polynomialMatrix> momentMatrices = generateAllMomentMatrices(objective, 1, 1, 1, use01);
+        std::vector<polynomialMatrix> momentMatricesL1 = generateAllMomentMatrices(objective, 1, -1, -1, use01);
+        std::vector<polynomialMatrix> momentMatricesL2 = generateAllMomentMatrices(objective, 2, -1, -1, use01);
+        std::vector<polynomialMatrix> momentMatricesL3 = generateAllMomentMatrices(objective, 3, -1, -1, use01);
+        std::vector<monomial> varNamesL1;
+        std::vector<double> varValsL1;
+        std::vector<monomial> varNamesL2;
+        std::vector<double> varValsL2;
+        std::vector<monomial> varNamesL3;
+        std::vector<double> varValsL3;
         std::vector<polynomial> constraintsZero = {};
         std::vector<polynomial> constraintsPositive = {};
-        std::vector<monomial> varNames;
-        std::vector<double> varVals;
-        double L1 = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, varNames, varVals, use01);
 
-        // Perform level 2 optimization
-        momentMatrices = generateAllMomentMatrices(objective, 2, 1, 1, use01);
-        varNames = {};
-        varVals = {};
-        double L2 = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, varNames, varVals, use01);
+        for (int j=0; j<1000; j++) {
+
+            // Pick a random objective
+            polynomial objective = bellFunc;
+            for (int i=0; i<objective.size(); i++) {
+                objective[i].first = 2.0*((double)rand()/(double)RAND_MAX)-1.0;
+            }
+            std::cout << "Objective: " << objective << std::endl;
+
+            // Perform level 1 optimization
+            double L1 = solveMOSEK(objective, momentMatricesL1, constraintsZero, constraintsPositive, 0, varNamesL1, varValsL1, use01);
+
+            // Perform level 2 optimization
+            //double L2 = solveMOSEK(objective, momentMatricesL2, constraintsZero, constraintsPositive, 0, varNamesL2, varValsL2, use01);
+
+            //std::cout << "L1: " << L1 << " L2: " << L2 << " Ratio: " << L2/L1 << std::endl;
+            std::cout << "L1: " << L1 << std::endl;
+            std::cout << "VarsL1: ";
+            for (int i=0; i<objective.size(); i++) {
+                for (int j=0; j<varNamesL1.size(); j++) {
+                    if (varNamesL1[j] == objective[i].second) {
+                        std::cout << varValsL1[j] << " ";
+                        break;
+                    }
+                }
+            }
+            std::cout << std::endl;
+            //std::cout << "VarsL2: ";
+            //for (int i=0; i<objective.size(); i++) {
+                //for (int j=0; j<varNamesL2.size(); j++) {
+                    //if (varNamesL2[j] == objective[i].second) {
+                        //std::cout << varValsL2[j] << " ";
+                        //break;
+                    //}
+                //}
+            //}
+            //std::cout << std::endl;
+
+        }
 
         return 0;
 
