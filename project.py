@@ -1,75 +1,89 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import cvxpy as cp
+from matplotlib.widgets import Slider
+from multiprocessing import Pool
+import os
 
-# Plot the semidefinite cone defined by
-# X = [[1, x, y], [x, 1, z], [y, z, 1]]
+# Fixed seed
 np.random.seed(1)
 
-# Optimize to find points on the edge of the cone
-# points = []
-# samples = 30
-# for c1 in np.linspace(-1, 1, samples):
-    # print(c1)
-    # for c2 in np.linspace(-1, 1, samples):
-        # for c3 in np.linspace(-1, 1, samples):
-            # c = np.array([c1, c2, c3])
-            # x = cp.Variable((3,3), symmetric=True)
-            # obj = cp.Minimize(c[0]*x[0,1] + c[1]*x[0,2] + c[2]*x[1,2])
-            # constraints = [
-                    # x >> 0,
-                    # x[0,0] == 1, 
-                    # x[1,1] == 1, 
-                    # x[2,2] == 1,
-                # ]
-            # prob = cp.Problem(obj, constraints)
-            # prob.solve()
-            # points.append(x.value)
-
 # Sample random points, check if they are on the cone
-points = []
-maxTries = 100000000000
-samples = 1000
-for i in range(maxTries):
-
-    # Check if the matrix is positive semidefinite
-    # x = np.random.randn(3)
-    # X = np.array([[1, x[0], x[1]], [x[0], 1, x[2]], [x[1], x[2], 1]])
-    x = np.random.randn(10)
-    x[8] = 1
-    X = np.array([[1, x[0], x[1], x[2], x[3]], 
-                  [x[0], 1, x[4], x[5], x[6]], 
-                  [x[1], x[4], 1, x[7], x[8]],
-                  [x[2], x[5], x[7], 1, x[9]],
-                  [x[3], x[6], x[8], x[9], 1]])
-    vals, vecs = np.linalg.eig(X)
-    if np.all(vals >= 0):
+def getPoints(a):
+    points = []
+    maxTries = 100000000000
+    samples = 10000
+    for i in range(maxTries):
+        x = np.random.randn(10)
+        X = np.array([[1, x[0], x[1], x[2], x[3]], 
+                      [x[0], 1, x[4], x[5], x[6]], 
+                      [x[1], x[4], 1, x[7], x[8]],
+                      [x[2], x[5], x[7], 1, x[9]],
+                      [x[3], x[6], x[8], x[9], 1]])
+        vals, vecs = np.linalg.eig(X)
+        while np.any(vals < 0):
+            vals[vals < 0] = 0
+            X = vecs @ np.diag(vals) @ vecs.T
+            for i in range(X.shape[0]):
+                X[i,i] = 1
+            vals, vecs = np.linalg.eig(X)
+        x = [X[0,1], X[0,2], X[0,3], X[0,4], X[1,2], X[1,3], X[1,4], X[2,3], X[2,4], X[3,4]]
         points.append(x)
-        if len(points) > samples:
+        if len(points) >= samples:
             break
+        if a == 0 and i % 1000 == 0:
+            print(float(i)/maxTries*100, '%')
+    return points
+
+# Get the points in parallel
+threads = 8
+pool = Pool(threads)
+points = pool.map(getPoints, range(threads))
+points = np.array(points)
+points = points.reshape(-1, 10)
+print(points.shape)
 
 # Plot the cone
 fig = plt.figure()
-ax = fig.gca(projection='3d')
+ax = plt.gca()
 ax.set_xlabel('x')
 ax.set_ylabel('y')
-ax.set_zlabel('z')
-ax.set_xlim3d(-2, 2)
-ax.set_ylim3d(-2, 2)
-ax.set_zlim3d(-2, 2)
+axSlider1 = fig.add_axes([0.2, 0.95, 0.65, 0.03])
+axSlider2 = fig.add_axes([0.2, 0.90, 0.65, 0.03])
+# ax = fig.gca(projection='3d')
+# ax.set_zlabel('z')
+# ax.set_xlim3d(-2, 2)
+# ax.set_ylim3d(-2, 2)
+# ax.set_zlim3d(-2, 2)
 
 # Plot the points
+val1 = 0
+val2 = 0
 points = np.array(points)
-# ax.scatter(points[:,0,1], points[:,0,2], points[:,1,2], color='r')
-xPoints = []
-yPoints = []
-zPoints = []
-for i in range(len(points)):
-    xPoints.append(points[i,5])
-    yPoints.append(points[i,6])
-    zPoints.append(points[i,7])
-# ax.scatter(points[:,5], points[:,6], points[:,7], color='r')
-ax.scatter(xPoints, yPoints, zPoints, color='r')
+def update():
+    global val1, val2
+    xPoints = []
+    yPoints = []
+    for i in range(len(points)):
+        if abs(points[i,7]-val1) <= 1e-1 and abs(points[i,8]-val2) <= 1e-1:
+            xPoints.append(points[i,5])
+            yPoints.append(points[i,6])
+    ax.clear()
+    ax.scatter(xPoints, yPoints, color='r', s=2)
+def setVal1(val):
+    global val1
+    val1 = val
+    update()
+def setVal2(val):
+    global val2
+    val2 = val
+    update()
+
+slider1 = Slider(axSlider1, 'Val 1', -1.5, 1.5, valinit=1, valfmt='%f')
+slider2 = Slider(axSlider2, 'Val 2', -1.5, 1.5, valinit=1, valfmt='%f')
+slider1.on_changed(setVal1)
+slider2.on_changed(setVal2)
+update()
 
 # Show the plot
 plt.show()
