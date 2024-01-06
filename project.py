@@ -13,6 +13,7 @@ np.random.seed(1)
 draw = False
 mode = 10
 fourthVal = 1.0
+threads = 1
 
 # Sample random points, check if they are on the cone
 def getPoints(a):
@@ -60,6 +61,10 @@ def testPoints(a):
         A1B2 = X[1,4]
         A2B1 = X[2,3]
         A2B2 = X[2,4]
+        A1B1sq = A1B1**2
+        A1B2sq = A1B2**2
+        A2B1sq = A2B1**2
+        A2B2sq = A2B2**2
         Ys = []
         # Ys.append([[1,      A1B1,       A1B2,       A2B1,       A2B2     ],
                    # [0,      1,          A2B1*A2B2,  A1B2*A2B2,  A1B2*A2B1],
@@ -79,22 +84,37 @@ def testPoints(a):
                    # [0,      0,       1,          A1B1*A2B2,  A1B1*A2B1],
                    # [0,      0,       0,          1,          A1B1*A1B2],
                    # [0,      0,       0,          0,          1        ]])
-        if abs(A2B2) >= 0.90:
-            Ys.append(np.array([[1,      A1B1,  A1B2],
-                                [0,      1,     A2B2*A2B1],
-                                [0,      0,     1]]))
-        # if abs(A2B1) >= 0.90:
-            # Ys.append(np.array([[1,      A1B1,  A1B2 ],
-                               # [0,      1,     A2B1*A2B2 ],
-                               # [0,      0,     1,   ]]))
-        # if abs(A1B1) >= 0.90:
-            # Ys.append(np.array([[1,      A1B2,  A2B1 ],
-                               # [0,      1,     A1B1*A2B2 ],
-                               # [0,      0,     1,   ]]))
-        # if abs(A1B2) >= 0.90:
-            # Ys.append(np.array([[1,      A1B1,  A2B1 ],
-                               # [0,      1,     A1B2*A2B2 ],
-                               # [0,      0,     1,   ]]))
+        # Ys.append(np.array([[1,      A1B1,    A1B2,       A2B1,       A2B2],
+                           # [0,      1,       0,          0,          0],
+                           # [0,      0,       1,          0,          0],
+                           # [0,      0,       0,          1,          0],
+                           # [0,      0,       0,          0,          1]]))
+        # Ys.append(np.array([[1,      A1B1,   A1B2],
+                           # [A1B1,    1,      0],
+                           # [A1B2,       0,      1]]))
+        # f = 0.935
+        # fac1 = abs(A2B1)*abs(A2B2)
+        # fac2 = abs(A1B1)*abs(A1B2)
+        # Ys.append(np.array([[f,      fac1*A1B1,  fac1*A1B2],
+                            # [0,      f,     A2B2*A2B1],
+                            # [0,      0,     f]]))
+        # Ys.append(np.array([[f,      fac2*A2B2,  fac2*A2B1],
+                            # [0,      f,     A1B2*A1B1],
+                            # [0,      0,     f]]))
+        # Ys.append(np.array([[1,      A2B1sq*A2B2sq*A1B1+A1B2sq*A1B1sq*A2B2,  A2B1sq*A2B2sq*A1B2+A1B2sq*A1B1sq*A2B1 ],
+                          # [0,      1,     A2B2*A2B1+A1B2*A1B1 ],
+                          # [0,      0,     1,   ]]))
+        # if abs(A2B1) >= 0.9 or abs(A2B2) >= 0.9: 
+        if abs(A2B1) >= 0.95: 
+            # f = 1.00
+            f = 0.90
+            Ys.append(np.array([[f,      A1B1,  A1B2],
+                                [0,      f,     A2B2*A2B1],
+                                [0,      0,     f]]))
+        # if abs(A1B2) >= 0.1 or abs(A1B1) >= 0.1: 
+            # Ys.append(np.array([[1,      A1B2sq*A1B1sq*A2B2,  A1B2sq*A1B1sq*A2B1 ],
+                              # [0,      1,     A1B2*A1B1 ],
+                              # [0,      0,     1,   ]]))
         # if True:
             # Ys.append([[1,      (A2B1**2)*A1B1,  (A2B1**2)*A1B2 ],
                        # [0,      1,               A2B1*A2B2      ],
@@ -104,23 +124,25 @@ def testPoints(a):
             for l in range(len(Ys)):
                 for i in range(len(Ys[l])):
                     for k in range(i+1, len(Ys[l])):
-                        Ys[l][k][i] = Ys[l][i][k]
+                        if Ys[l][k][i] == 0:
+                            Ys[l][k][i] = Ys[l][i][k]
                 vals, vecs = np.linalg.eig(Ys[l])
-                YIsPSD = np.all(vals >= -0.00)
+                YIsPSD = np.all(vals >= 0.0)
                 if not YIsPSD:
                     break
             totalDone += 1
             if XIsPSD and not YIsPSD:
                 numInequal += 1
-                # print("X: ")
-                # print(X)
-                # print(XIsPSD)
-                # print(min(val))
-                # print("Ys: ")
-                # for Y in Ys:
-                    # print(Y)
-                # print(YIsPSD)
-                # print(min(vals))
+                print("X: ")
+                print(X)
+                print(XIsPSD)
+                print(min(val))
+                print("Ys: ")
+                for Y in Ys:
+                    print(Y)
+                print(YIsPSD)
+                print(min(vals))
+                break
         if a == 0 and j % (samples//10) == 0:
             print(100.0*float(j)/samples, '%')
     return numInequal, totalDone
@@ -128,7 +150,6 @@ def testPoints(a):
 if not draw:
 
     # Get the points in parallel
-    threads = 8
     pool = Pool(threads)
     numsNotPSD = pool.map(testPoints, range(threads))
     totalChecks = sum([x[1] for x in numsNotPSD])
@@ -142,7 +163,6 @@ if not draw:
     exit()
 
 # Get the points in parallel
-threads = 8
 pool = Pool(threads)
 points = pool.map(getPoints, range(threads))
 points = np.array(points)
