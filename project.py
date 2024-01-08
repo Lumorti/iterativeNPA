@@ -18,10 +18,10 @@ np.random.seed(1)
 # 3 or 10
 draw = True
 thingsToDraw = [
-        ("name": "box", "draw": True, "regen": False)
-        ("name": "sphube", "draw": True, "regen": False)
-        ("name": "cone", "draw": True, "regen": False)
-        ("name": "data", "draw": True, "regen": False)
+        {"name": "box", "draw": True, "regen": False},
+        {"name": "sphube", "draw": True, "regen": False},
+        {"name": "cone", "draw": True, "regen": False},
+        {"name": "data", "draw": True, "regen": False},
     ]
 mode = 20
 fourthVal = 1.0
@@ -240,7 +240,7 @@ pointArray = []
 for thingToDraw in thingsToDraw:
 
     # If told to draw the box from -1 to 1
-    if thingToDraw.name == "box" and thingToDraw.draw:
+    if thingToDraw["name"] == "box" and thingToDraw["draw"]:
         points = [
             [-1, -1, -1],
             [-1, -1,  1],
@@ -254,8 +254,8 @@ for thingToDraw in thingsToDraw:
         pointArray.append(np.array(points))
 
     # If told to draw a standard-ish sphube
-    elif thingToDraw.name == "sphube" and thingToDraw.draw:
-        if thingToDraw.regen:
+    elif thingToDraw["name"] == "sphube" and thingToDraw["draw"]:
+        if thingToDraw["regen"]:
             pool2 = Pool(threads)
             points2 = pool2.map(getPointsUniformSquircle, range(threads))
             points2 = reduce(lambda a, b: np.concatenate((a,b)), points2)
@@ -267,8 +267,8 @@ for thingToDraw in thingsToDraw:
             pointArray.append(points2)
 
     # If told to draw the 3D SDP cone
-    elif thingToDraw.name == "cone" and thingToDraw.draw:
-        if thingToDraw.regen:
+    elif thingToDraw["name"] == "cone" and thingToDraw["draw"]:
+        if thingToDraw["regen"]:
             pool3 = Pool(threads)
             points3 = pool3.map(getPointsUniformCone, range(threads))
             points3 = reduce(lambda a, b: np.concatenate((a,b)), points3)
@@ -280,8 +280,8 @@ for thingToDraw in thingsToDraw:
             pointArray.append(points3)
 
     # If told to draw the data for a specific fourth value
-    elif thingToDraw.name == "data" and thingToDraw.draw:
-        if thingToDraw.regen:
+    elif thingToDraw["name"] == "data" and thingToDraw["draw"]:
+        if thingToDraw["regen"]:
             pool = Pool(threads)
             points = pool.map(getPointsUniform, range(threads))
             points = reduce(lambda a, b: np.concatenate((a,b)), points)
@@ -292,87 +292,87 @@ for thingToDraw in thingsToDraw:
             pointArray.append(points)
 
 # If told to regenerate the point list
-if regeneratePointList:
+# if regeneratePointList:
 
-    # If asking for either
-    if mode == 3 or mode == 10:
+    # # If asking for either
+    # if mode == 3 or mode == 10:
 
-        # Get the points in parallel
-        print("Generating points...")
-        pool = Pool(threads)
-        points = pool.map(getPoints, range(threads))
-        points = np.array(points)
-        if mode == 3:
-            points = points.reshape(-1, 3)
-        elif mode == 10:
-            points = points.reshape(-1, 4)
+        # # Get the points in parallel
+        # print("Generating points...")
+        # pool = Pool(threads)
+        # points = pool.map(getPoints, range(threads))
+        # points = np.array(points)
+        # if mode == 3:
+            # points = points.reshape(-1, 3)
+        # elif mode == 10:
+            # points = points.reshape(-1, 4)
 
-        # Write them to file
-        writePoints(points, "points"+str(mode)+".txt")
+        # # Write them to file
+        # writePoints(points, "points"+str(mode)+".txt")
 
-    # If asking for both
-    elif mode == 30:
+    # # If asking for both
+    # elif mode == 30:
 
-        # Same as above, but switch the global
-        print("Generating points for mode 3...")
-        mode = 3
-        pool = Pool(threads)
-        points3 = pool.map(getPoints, range(threads))
-        points3 = np.array(points3)
-        points3 = points3.reshape(-1, 3)
-        writePoints(points3, "points3.txt")
-        print("Generating points for mode 10...")
-        mode = 10
-        pool2 = Pool(threads)
-        points10 = pool2.map(getPoints, range(threads))
-        points10 = np.array(points10)
-        points10 = points10.reshape(-1, 4)
-        writePoints(points10, "points10.txt")
-        mode = 30
+        # # Same as above, but switch the global
+        # print("Generating points for mode 3...")
+        # mode = 3
+        # pool = Pool(threads)
+        # points3 = pool.map(getPoints, range(threads))
+        # points3 = np.array(points3)
+        # points3 = points3.reshape(-1, 3)
+        # writePoints(points3, "points3.txt")
+        # print("Generating points for mode 10...")
+        # mode = 10
+        # pool2 = Pool(threads)
+        # points10 = pool2.map(getPoints, range(threads))
+        # points10 = np.array(points10)
+        # points10 = points10.reshape(-1, 4)
+        # writePoints(points10, "points10.txt")
+        # mode = 30
 
-    elif mode == 20:
+    # elif mode == 20:
 
-        # Uniformly sample over the projected space, then see if they are in the OG cone
-        pool = Pool(threads)
-        points = pool.map(getPointsUniform, range(threads))
-        points = reduce(lambda a, b: np.concatenate((a,b)), points)
-        points = points.reshape(-1, 3)
-        writePoints(points, "points" + str(fourthVal) + ".txt")
+        # # Uniformly sample over the projected space, then see if they are in the OG cone
+        # pool = Pool(threads)
+        # points = pool.map(getPointsUniform, range(threads))
+        # points = reduce(lambda a, b: np.concatenate((a,b)), points)
+        # points = points.reshape(-1, 3)
+        # writePoints(points, "points" + str(fourthVal) + ".txt")
 
-        # Same as above but for squircle
-        if fourthVal >= 0.5:
-            pool2 = Pool(threads)
-            points2 = pool2.map(getPointsUniformCone, range(threads))
-            points2 = reduce(lambda a, b: np.concatenate((a,b)), points2)
-            points2 = points2.reshape(-1, 3)
-            writePoints(points2, "pointsCone.txt")
-        else:
-            pool2 = Pool(threads)
-            points2 = pool2.map(getPointsUniformSquircle, range(threads))
-            points2 = reduce(lambda a, b: np.concatenate((a,b)), points2)
-            points2 = points2.reshape(-1, 3)
+        # # Same as above but for squircle
+        # if fourthVal >= 0.5:
+            # pool2 = Pool(threads)
+            # points2 = pool2.map(getPointsUniformCone, range(threads))
+            # points2 = reduce(lambda a, b: np.concatenate((a,b)), points2)
+            # points2 = points2.reshape(-1, 3)
+            # writePoints(points2, "pointsCone.txt")
+        # else:
+            # pool2 = Pool(threads)
+            # points2 = pool2.map(getPointsUniformSquircle, range(threads))
+            # points2 = reduce(lambda a, b: np.concatenate((a,b)), points2)
+            # points2 = points2.reshape(-1, 3)
 
-# Otherwise load them from file
-else:
+# # Otherwise load them from file
+# else:
 
-    # If just asking for one type
-    if mode == 3 or mode == 10:
-        points = readPoints("points"+str(mode)+".txt")
+    # # If just asking for one type
+    # if mode == 3 or mode == 10:
+        # points = readPoints("points"+str(mode)+".txt")
 
-    elif mode == 20:
-        points = readPoints("points" + str(fourthVal) + ".txt")
-        if fourthVal >= 0.5:
-            points2 = readPoints("pointsCone.txt")
-        else:
-            pool2 = Pool(threads)
-            points2 = pool2.map(getPointsUniformSquircle, range(threads))
-            points2 = reduce(lambda a, b: np.concatenate((a,b)), points2)
-            points2 = points2.reshape(-1, 3)
+    # elif mode == 20:
+        # points = readPoints("points" + str(fourthVal) + ".txt")
+        # if fourthVal >= 0.5:
+            # points2 = readPoints("pointsCone.txt")
+        # else:
+            # pool2 = Pool(threads)
+            # points2 = pool2.map(getPointsUniformSquircle, range(threads))
+            # points2 = reduce(lambda a, b: np.concatenate((a,b)), points2)
+            # points2 = points2.reshape(-1, 3)
 
-    # Or if asking for both
-    elif mode == 30:
-        points3 = readPoints("points3.txt")
-        points10 = readPoints("points10.txt")
+    # # Or if asking for both
+    # elif mode == 30:
+        # points3 = readPoints("points3.txt")
+        # points10 = readPoints("points10.txt")
 
 # If testing the points
 if not draw:
@@ -405,71 +405,73 @@ else:
     ax.set_ylim(-1.2, 1.2)
     ax.set_zlim(-1.2, 1.2)
     ax.set_proj_type("ortho")
-    if mode == 3 or mode == 10:
-        print("Processing points...")
-        points = np.array(points)
-        if mode == 10:
-            newPoints = []
-            for i in range(len(points)):
-                if abs(points[i,3]-fourthVal) <= tol:
-                    newPoints.append([points[i,0], points[i,1], points[i,2]])
-            points = np.array(newPoints)
-        print("Calculating convex hull...")
+    for i, points in enumerate(pointArray):
+        col = i
         hull = ConvexHull(points[:,:])
-        print("Drawing...")
         for s in hull.simplices:
             s = np.append(s, s[0])
-            ax.plot(points[s, 0], points[s, 1], points[s, 2], "r-")
-    elif mode == 20:
-        print("Processing points...")
-        points = np.array(points)
-        if mode == 10:
-            newPoints = []
-            for i in range(len(points)):
-                if abs(points[i,3]-fourthVal) <= tol:
-                    newPoints.append([points[i,0], points[i,1], points[i,2]])
-            points = np.array(newPoints)
-        print("Calculating convex hull...")
-        hull = ConvexHull(points[:,:])
-        hull2 = ConvexHull(points2[:,:])
-        print("Drawing...")
-        for s in hull.simplices:
-            s = np.append(s, s[0])
-            ax.plot(points[s, 0], points[s, 1], points[s, 2], "r-")
-        for s in hull2.simplices:
-            s = np.append(s, s[0])
-            ax.plot(points2[s, 0], points2[s, 1], points2[s, 2], "b-")
-    elif mode == 30:
-        print("Processing points...")
-        points3 = np.array(points3)
-        points10 = np.array(points10)
-        newPoints = []
-        for i in range(len(points10)):
-            if abs(points10[i,3]-fourthVal) <= tol:
-                newPoints.append([points10[i,0], points10[i,1], points10[i,2]])
-        points10 = np.array(newPoints)
-        print("Calculating convex hull...")
-        hull3 = ConvexHull(points3[:,:])
-        hull10 = ConvexHull(points10[:,:])
-        print("Drawing...")
-        for s in hull3.simplices:
-            s = np.append(s, s[0])
-            ax.plot(points3[s, 0], points3[s, 1], points3[s, 2], "r-")
-        for s in hull10.simplices:
-            s = np.append(s, s[0])
-            ax.plot(points10[s, 0], points10[s, 1], points10[s, 2], "b-")
-    r = [-1, 1]
-    for s, e in combinations(np.array(list(product(r,r,r))), 2):
-        if np.sum(np.abs(s-e)) == r[1]-r[0]:
-            ax.plot3D(*zip(s,e), color="g")
+            ax.plot(points[s, 0], points[s, 1], points[s, 2], "-", color=col)
     fig.tight_layout()
     plt.show()
 
-
-
-
-
-
-
+    # if mode == 3 or mode == 10:
+        # print("Processing points...")
+        # points = np.array(points)
+        # if mode == 10:
+            # newPoints = []
+            # for i in range(len(points)):
+                # if abs(points[i,3]-fourthVal) <= tol:
+                    # newPoints.append([points[i,0], points[i,1], points[i,2]])
+            # points = np.array(newPoints)
+        # print("Calculating convex hull...")
+        # hull = ConvexHull(points[:,:])
+        # print("Drawing...")
+        # for s in hull.simplices:
+            # s = np.append(s, s[0])
+            # ax.plot(points[s, 0], points[s, 1], points[s, 2], "r-")
+    # elif mode == 20:
+        # print("Processing points...")
+        # points = np.array(points)
+        # if mode == 10:
+            # newPoints = []
+            # for i in range(len(points)):
+                # if abs(points[i,3]-fourthVal) <= tol:
+                    # newPoints.append([points[i,0], points[i,1], points[i,2]])
+            # points = np.array(newPoints)
+        # print("Calculating convex hull...")
+        # hull = ConvexHull(points[:,:])
+        # hull2 = ConvexHull(points2[:,:])
+        # print("Drawing...")
+        # for s in hull.simplices:
+            # s = np.append(s, s[0])
+            # ax.plot(points[s, 0], points[s, 1], points[s, 2], "r-")
+        # for s in hull2.simplices:
+            # s = np.append(s, s[0])
+            # ax.plot(points2[s, 0], points2[s, 1], points2[s, 2], "b-")
+    # elif mode == 30:
+        # print("Processing points...")
+        # points3 = np.array(points3)
+        # points10 = np.array(points10)
+        # newPoints = []
+        # for i in range(len(points10)):
+            # if abs(points10[i,3]-fourthVal) <= tol:
+                # newPoints.append([points10[i,0], points10[i,1], points10[i,2]])
+        # points10 = np.array(newPoints)
+        # print("Calculating convex hull...")
+        # hull3 = ConvexHull(points3[:,:])
+        # hull10 = ConvexHull(points10[:,:])
+        # print("Drawing...")
+        # for s in hull3.simplices:
+            # s = np.append(s, s[0])
+            # ax.plot(points3[s, 0], points3[s, 1], points3[s, 2], "r-")
+        # for s in hull10.simplices:
+            # s = np.append(s, s[0])
+            # ax.plot(points10[s, 0], points10[s, 1], points10[s, 2], "b-")
+    # r = [-1, 1]
+    # for s, e in combinations(np.array(list(product(r,r,r))), 2):
+        # if np.sum(np.abs(s-e)) == r[1]-r[0]:
+            # ax.plot3D(*zip(s,e), color="g")
+    # fig.tight_layout()
+    # plt.show()
 
 
