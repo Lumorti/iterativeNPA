@@ -16,13 +16,12 @@ matplotlib.use("GTK4Agg")
 np.random.seed(1)
 
 # 3 or 10
-draw = True
 thingsToDraw = [
-        {"name": "box", "draw": True, "regen": False},
-        {"name": "data", "draw": True, "regen": False},
-        {"name": "sphube", "draw": False, "regen": False},
-        {"name": "cone", "draw": False, "regen": False},
-        {"name": "test", "draw": True, "regen": True},
+        {"name": "box",    "draw": False,  "regen": False, "check": False},
+        {"name": "data",   "draw": True,  "regen": False, "check": False},
+        {"name": "sphube", "draw": False, "regen": False, "check": False},
+        {"name": "cone",   "draw": False, "regen": False, "check": False},
+        {"name": "test",   "draw": True,  "regen": True,  "check": False},
     ]
 fourthVal = 0.0
 threads = 10
@@ -88,7 +87,9 @@ def getPointsUniform(a):
     return points
 
 # Check if a point is in the squircle
-def checkPointSquircle(x, y, z, s, r):
+def checkPointSphube(x, y, z):
+    s = 0.970
+    r = 1.09
     s2r2 = s**2 / float(r**2)
     s4r4 = s**4 / float(r**4)
     x2 = x**2
@@ -99,20 +100,22 @@ def checkPointSquircle(x, y, z, s, r):
     else:
         return False
 
+# Check if a point is in the box
+def checkPointBox(x, y, z):
+    return abs(x) <= 1 and abs(y) <= 1 and abs(z) <= 1
+
 # Get the point cloud representation of the squircle
-def getPointsUniformSquircle(a):
+def getPointsUniformSphube(a):
     points = []
     pointsPer = 60
     count = 0
-    s = 0.970
-    r = 1.09
     fullRegion = np.linspace(-1, 1, pointsPer)
     localRegion = fullRegion[a*pointsPer//threads:(a+1)*pointsPer//threads]
     for var1 in localRegion:
         for var2 in fullRegion:
             for var3 in fullRegion:
                 count += 1
-                if checkPointSquircle(var1, var2, var3, s, r):
+                if checkPointSphube(var1, var2, var3):
                     points.append([var1, var2, var3])
             if a == 0:
                 print(100.0*threads*float(count)/(pointsPer**3), "%")
@@ -160,35 +163,40 @@ def checkPointTest(x, y, z):
     # X = [[1, term, term], 
          # [0, 1, term], 
          # [0, 0, 1]]
+    a = fourthVal
     x2 = x**2
     y2 = y**2
     z2 = z**2
-    prod = x*y*z
-    prod2 = prod**2
-    sumPrd = x2*y2 + x2*z2 + y2*z2
-    term = x2 + y2 + z2
+    a2 = a**2
+    s = x2*y2 + z2*(x2 + y2) + a2*(x2 + y2 + z2)
+    t = x2 + y2 + z2 + a2
     # X0 = [[1, term], 
          # [0, 1+sumPrd]]
-    X0 = [[2, term, term], 
-         [0, 1+sumPrd, term], 
-         [0, 0, 1+sumPrd]]
+    X0 = [[2, t, t], 
+         [0, 1+s, t], 
+         [0, 0, 1+s]]
     # X0 = [[1, x2, y2, z2], 
          # [0, 1+x2, 0, 0], 
          # [0, 0, 1+y2, 0],
          # [0, 0, 0, 1+z2]]
     X1 = [[1, x, y], 
-         [0, 1, fourthVal*z], 
+         [0, 1, a*z], 
          [0, 0, 1]]
     X0 = np.array(X0)
     X1 = np.array(X1)
-    X = fourthVal**2*X1 + (1-fourthVal**2)*X0
-    # X = [[1, x, y, z], 
-         # [0, 1, z, y], 
-         # [0, 0, 1, x],
-         # [0, 0, 0, 1]]
+    X = a*a*X1 + (1-a*a)*X0
+    # X = X0
+    # b = x*y*z*a
+    # c = x*x + y*y + z*z + a*a
+    X = [[1, 0, x, y], 
+         [0, 1, z, a], 
+         [0, 0, 1, 0],
+         [0, 0, 0, 1]]
+    X = np.array(X)
     for i in range(X.shape[0]):
         for j in range(0, i):
-            X[i,j] = X[j,i]
+            if X[i,j] == 0:
+                X[i,j] = X[j,i]
     vals, vecs = np.linalg.eig(X)
     return np.all(vals > 0)
 
@@ -258,7 +266,7 @@ for thingToDraw in thingsToDraw:
     elif thingToDraw["name"] == "sphube" and (thingToDraw["draw"] or thingToDraw["regen"]):
         if thingToDraw["regen"]:
             pool2 = Pool(threads)
-            points2 = pool2.map(getPointsUniformSquircle, range(threads))
+            points2 = pool2.map(getPointsUniformSphube, range(threads))
             points2 = reduce(lambda a, b: np.concatenate((a,b)), points2)
             points2 = points2.reshape(-1, 3)
             writePoints(points2, "pointsSphube.txt")
@@ -310,29 +318,67 @@ for thingToDraw in thingsToDraw:
             pointArray.append(points)
             nameArray.append("Data")
 
-# If testing the points
-if not draw:
-    pool = Pool(threads)
-    chunkSize = len(points)//threads
-    chunks = [points[i:i+chunkSize] for i in range(0, len(points), chunkSize)]
-    numsNotPSD = pool.map(testPoints, chunks)
-    totalChecks = sum([x[1] for x in numsNotPSD])
-    totalNotPSD = sum([x[0] for x in numsNotPSD])
-    if totalChecks == 0:
-        print("No checks done")
-    else:
-        percentPSD = 100.0*(1.0-float(totalNotPSD)/totalChecks)
-        print("Total checks: ", totalChecks)
-        print("Percent correct: ", percentPSD)
+# Sample many points and see which regions they are in
+def checkAll(a):
+    counts = {}
+    for thing in thingsToDraw:
+        for thing2 in thingsToDraw:
+            if thing["check"] and thing2["check"]:
+                counts[(thing["name"], thing2["name"])] = 0
+    asDict = {}
+    for thing in thingsToDraw:
+        asDict[thing["name"]] = thing["check"]
+    pointsPer = 20
+    count = 0
+    fullRegion = np.linspace(-1, 1, pointsPer)
+    localRegion = fullRegion[a*pointsPer//threads:(a+1)*pointsPer//threads]
+    for var1 in localRegion:
+        for var2 in fullRegion:
+            for var3 in fullRegion:
+                count += 1
+                results = {}
+                if asDict["box"]:
+                    results["box"] = checkPointBox(var1, var2, var3)
+                if asDict["test"]:
+                    results["test"] = checkPointTest(var1, var2, var3)
+                if asDict["cone"]:
+                    results["cone"] = checkPointCone(var1, var2, var3)
+                if asDict["sphube"]:
+                    results["sphube"] = checkPointSphube(var1, var2, var3)
+                if asDict["data"]:
+                    results["data"] = checkPoint(var1, var2, var3, fourthVal)
+                for thing in thingsToDraw:
+                    for thing2 in thingsToDraw:
+                        if thing["check"] and thing2["check"]:
+                            counts[(thing["name"], thing2["name"])] += (results[thing["name"]] == results[thing2["name"]])
+            if a == 0:
+                print(100.0*threads*float(count)/(pointsPer**3), "%")
+    for thing in thingsToDraw:
+        for thing2 in thingsToDraw:
+            if thing["check"] and thing2["check"]:
+                counts[(thing["name"], thing2["name"])] *= 100.0 / float(pointsPer**3)
+    return counts
 
-# If drawing the points
-else:
+# If we need to do any analysis
+checkAny = False
+for thing in thingsToDraw:
+    if thing["check"]:
+        checkAny = True
+        break
+if checkAny:
+    pool = Pool(threads)
+    results = pool.map(checkAll, range(threads))
+    results = reduce(lambda a, b: {k: a.get(k, 0) + b.get(k, 0) for k in set(a) | set(b)}, results)
+    print(results)
+
+# Draw everything in 3D if there's something to draw
+if len(pointArray) > 0:
     print("Setting up plot...")
     fig = plt.figure()
     ax = plt.axes(projection="3d")
     ax.set_xlabel("x")
     ax.set_ylabel("y")
-    ax.set_zlabel("y")
+    ax.set_zlabel("z")
     ax.set_xlim(-1.2, 1.2)
     ax.set_ylim(-1.2, 1.2)
     ax.set_zlim(-1.2, 1.2)
