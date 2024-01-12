@@ -8,12 +8,14 @@ import math
 import random
 import matplotlib
 from scipy.spatial import ConvexHull
+from scipy.optimize import minimize
 from itertools import product, combinations
 from functools import reduce
 matplotlib.use("GTK4Agg")
 
 # Fixed seed
 np.random.seed(1)
+random.seed(0)
 
 # 3 or 10
 thingsToDraw = [
@@ -21,9 +23,10 @@ thingsToDraw = [
         {"name": "data",   "draw": True,  "regen": False, "check": False},
         {"name": "sphube", "draw": False, "regen": False, "check": False},
         {"name": "cone",   "draw": False, "regen": False, "check": False},
-        {"name": "test",   "draw": True,  "regen": True,  "check": False},
+        {"name": "test",   "draw": False,  "regen": False,  "check": False},
     ]
-fourthVal = 0.0
+optimizeSDP = True
+fourthVal = 1.0
 threads = 10
 thresh = 0.30
 tol = 0.01
@@ -69,7 +72,8 @@ def checkPoint(var1, var2, var3, var4):
 def getPointsUniform(a):
     points = []
     var4 = fourthVal
-    pointsPer = 50
+    print("Generating points for fourth variable = ", var4)
+    pointsPer = 40
     count = 0
     fullRegion = np.linspace(-1, 1, pointsPer)
     localRegion = fullRegion[a*pointsPer//threads:(a+1)*pointsPer//threads]
@@ -156,7 +160,7 @@ def getPointsUniformCone(a):
     points = points[hull.vertices,:]
     return points
 
-# Check if a point is in the test domain TODO
+# Check if a point is in the test domain
 def checkPointTest(x, y, z):
     # term = x**2 + y**2 + z**2 + 2*x*y*z
     # return term <= 1
@@ -220,7 +224,7 @@ def getPointsUniformTest(a):
     points = points[hull.vertices,:]
     return points
 
-# Sample random points in the cone
+# Write points to a file
 def writePoints(points, filename):
     print("Writing ", len(points), " points to file " + filename + "...")
     with open(filename, "w") as f:
@@ -242,9 +246,189 @@ def readPoints(filename):
         print("Loaded ", len(points), " points")
         return np.array(points)
 
-# For each thing to each draw or recalulate
 pointArray = []
 nameArray = []
+
+# Check if a point is in the a custom cone 
+def checkPointCustom(vec, point, matSize):
+    X = np.eye(matSize)
+    vecInd = 0
+    for i in range(matSize):
+        for j in range(0, i):
+            X[j,i] = vec[vecInd]
+            vecInd += 1
+            for el in point:
+                X[j,i] += vec[vecInd]*el
+                vecInd += 1
+            X[i,j] = X[j,i]
+    vals, vecs = np.linalg.eig(X)
+    return np.all(vals > 0)
+
+# Cost function for fitting the cone
+def cost(vec, points, matSize):
+    dist = 0
+    for point in points:
+        X = np.eye(matSize)
+        vecInd = 0
+        for i in range(matSize):
+            for j in range(0, i):
+                X[j,i] = vec[vecInd]
+                vecInd += 1
+                for el in point:
+                    X[j,i] += vec[vecInd]*el
+                    vecInd += 1
+                X[i,j] = X[j,i]
+        vals, vecs = np.linalg.eig(X)
+        dist += abs(np.min(vals))
+    dist /= len(points)
+    print(dist)
+    return dist
+
+# Get the point cloud representation of the test region
+def getPointsUniformCustom(args):
+    coeffs, matSize, a = args
+    points = []
+    pointsPer = 60
+    count = 0
+    fullRegion = np.linspace(-1, 1, pointsPer)
+    localRegion = fullRegion[a*pointsPer//threads:(a+1)*pointsPer//threads]
+    for var1 in localRegion:
+        for var2 in fullRegion:
+            for var3 in fullRegion:
+                count += 1
+                if checkPointCustom(coeffs, [var1, var2, var3], matSize):
+                    points.append([var1, var2, var3])
+            if a == 0:
+                print(100.0*threads*float(count)/(pointsPer**3), "%")
+    points = np.array(points)
+    hull = ConvexHull(points)
+    points = points[hull.vertices,:]
+    return points
+
+# Get the point cloud representation of the test region
+def getPointsUniformCustom4(args):
+    coeffs, matSize, a = args
+    points = []
+    pointsPer = 60
+    count = 0
+    fullRegion = np.linspace(-1, 1, pointsPer)
+    localRegion = fullRegion[a*pointsPer//threads:(a+1)*pointsPer//threads]
+    for var1 in localRegion:
+        for var2 in fullRegion:
+            for var3 in fullRegion:
+                count += 1
+                if checkPointCustom(coeffs, [var1, var2, var3, fourthVal], matSize):
+                    points.append([var1, var2, var3])
+            if a == 0:
+                print(100.0*threads*float(count)/(pointsPer**3), "%")
+    points = np.array(points)
+    hull = ConvexHull(points)
+    points = points[hull.vertices,:]
+    return points
+
+# Brute force a section of the search space
+def bruteForce(args):
+    matSize, numVars, points, thread = args
+    res = 10000000
+    perThread = (2**numVars)//threads
+    start = thread*perThread
+    end = (thread+1)*perThread
+    for i in range(start, end):
+        vec = [0 for i in range(numVars)]
+        for j in range(numVars):
+            vec[j] = (i >> j) % 2
+        res = min(res, cost(vec, points, matSize))
+        if thread == 0 and i % 100 == 0:
+            print(100.0*float(i)/perThread, "%, min so far = ", res)
+    return res
+
+# If told to optimize to minimize the SDP hull TODO
+if optimizeSDP:
+    matSize = 5
+    allPoints = readPoints("data/pointsAll.csv")
+    points = []
+    pointsToSample = 1000000000
+    numVars = (matSize*(matSize+1)//2-matSize) * (allPoints.shape[1]+1)
+    vec = [1 for i in range(numVars)]
+    # vec = np.random.rand(numVars)
+    # vec = np.array([-0.21806701, -0.30024651, -0.2024949 , -0.15697767, -0.12269202,
+       # -0.482077  ,  0.26369564,  0.28087138, -0.21673742, -0.02869441,
+       # -0.22670792,  0.08536931, -0.09920705, -0.0567977 , -0.23431801,
+       # -0.07499742, -0.50900859,  0.13968817,  0.15751262,  0.40836086,
+        # 0.50056849,  0.09140297, -0.13158019,  0.47424429,  0.12773484,
+       # -0.22482994, -0.38876055,  0.31887217, -0.06631954, -0.01572061,
+       # -0.27017813, -0.09920275,  0.24522633, -0.15417556,  0.32584317,
+       # -0.09420153, -0.02195686,  0.27172932, -0.00135903,  0.05110155])
+    pointsToSample = min(pointsToSample, len(allPoints))
+    for i in range(pointsToSample):
+        rand = random.randint(0, len(allPoints)-1)
+        points.append(allPoints[rand])
+        np.delete(allPoints, rand)
+
+    # x = cp.Variable(numVars)
+    # mats = [cp.Variable((matSize,matSize), symmetric=True) for i in range(len(points))]
+    # cons = []
+    # lam = cp.Variable()
+    # for i, mat in enumerate(mats):
+        # cons.append(mat >> 0)
+        # varInd = 0
+        # for j in range(matSize):
+            # cons.append(mat[j,j] == 1)
+            # for k in range(0, j):
+                # term = 0
+                # for el in points[i]:
+                    # term += el*x[varInd]
+                    # varInd += 1
+                # cons.append(mat[k,j] == term)
+    # for i in range(numVars):
+        # cons.append(x[i] >= 0)
+        # cons.append(x[i] <= 1)
+    # obj = cp.sum(x)
+    # prob = cp.Problem(cp.Maximize(obj), cons)
+    # print(prob)
+    # prob.solve(solver=cp.MOSEK, mosek_params={"MSK_IPAR_NUM_THREADS": 1})
+    # print("lam = ", lam.value)
+    # print("x = ", x.value)
+    # cost(x.value, points, matSize)
+
+    # res = minimize(cost, vec, args = (points, matSize), method = "nelder-mead", tol = 1e-8, options = {"maxiter": 10000})
+    # res = minimize(cost, vec, args = (points, matSize), method = "BFGS", tol = 1e-8, options = {"maxiter": 10000})
+    # res = minimize(cost, vec, args = (points, matSize), method = "L-BFGS-B", tol = 1e-2, options = {"maxiter": 10000})
+    res = minimize(cost, vec, args = (points, matSize), method = "COBYLA", tol = 1e-6, options = {"maxiter": 10000})
+    finalVec = res.x
+    # finalVec = vec
+
+    # pool = Pool(threads)
+    # toSplit = [(matSize, numVars, points, i) for i in range(threads)]
+    # results = pool.map(bruteForce, toSplit)
+    # res = 10000000
+    # for result in results:
+        # res = min(res, result)
+
+    # print("result = ", res)
+    # print("num vars = ", numVars)
+    # print("final vector = ", finalVec)
+
+    if points[0].shape[0] == 3:
+        pool2 = Pool(threads)
+        toSplit2 = [(finalVec, matSize, i) for i in range(threads)]
+        points2 = pool2.map(getPointsUniformCustom, toSplit2)
+        points2 = reduce(lambda a, b: np.concatenate((a,b)), points2)
+        points2 = points2.reshape(-1, 3)
+        pointArray.append(points2)
+        nameArray.append("Custom")
+    elif points[0].shape[0] == 4:
+        pool2 = Pool(threads)
+        toSplit2 = [(finalVec, matSize, i) for i in range(threads)]
+        points2 = pool2.map(getPointsUniformCustom4, toSplit2)
+        points2 = reduce(lambda a, b: np.concatenate((a,b)), points2)
+        points2 = points2.reshape(-1, 3)
+        pointArray.append(points2)
+        nameArray.append("Custom")
+    else:
+        exit()
+
+# For each thing to each draw or recalulate
 for thingToDraw in thingsToDraw:
 
     # If told to draw the box from -1 to 1
@@ -269,9 +453,9 @@ for thingToDraw in thingsToDraw:
             points2 = pool2.map(getPointsUniformSphube, range(threads))
             points2 = reduce(lambda a, b: np.concatenate((a,b)), points2)
             points2 = points2.reshape(-1, 3)
-            writePoints(points2, "pointsSphube.txt")
+            writePoints(points2, "data/pointsSphube.csv")
         else:
-            points2 = readPoints("pointsSphube.txt")
+            points2 = readPoints("data/pointsSphube.csv")
         if thingToDraw["draw"]:
             pointArray.append(points2)
             nameArray.append("Sphube")
@@ -283,9 +467,9 @@ for thingToDraw in thingsToDraw:
             points3 = pool3.map(getPointsUniformCone, range(threads))
             points3 = reduce(lambda a, b: np.concatenate((a,b)), points3)
             points3 = points3.reshape(-1, 3)
-            writePoints(points3, "pointsCone.txt")
+            writePoints(points3, "data/pointsCone.csv")
         else:
-            points3 = readPoints("pointsCone.txt")
+            points3 = readPoints("data/pointsCone.csv")
         if thingToDraw["draw"]:
             pointArray.append(points3)
             nameArray.append("Cone")
@@ -297,9 +481,9 @@ for thingToDraw in thingsToDraw:
             points3 = pool3.map(getPointsUniformTest, range(threads))
             points3 = reduce(lambda a, b: np.concatenate((a,b)), points3)
             points3 = points3.reshape(-1, 3)
-            writePoints(points3, "pointsTest.txt")
+            writePoints(points3, "data/pointsTest.csv")
         else:
-            points3 = readPoints("pointsTest.txt")
+            points3 = readPoints("data/pointsTest.csv")
         if thingToDraw["draw"]:
             pointArray.append(points3)
             nameArray.append("Test Region")
@@ -307,13 +491,15 @@ for thingToDraw in thingsToDraw:
     # If told to draw the data for a specific fourth value
     elif thingToDraw["name"] == "data" and (thingToDraw["draw"] or thingToDraw["regen"]):
         if thingToDraw["regen"]:
-            pool = Pool(threads)
-            points = pool.map(getPointsUniform, range(threads))
-            points = reduce(lambda a, b: np.concatenate((a,b)), points)
-            points = points.reshape(-1, 3)
-            writePoints(points, "points" + str(fourthVal) + ".txt")
+            for val in np.linspace(-1, 1, 30):
+                fourthVal = val
+                pool = Pool(threads)
+                points = pool.map(getPointsUniform, range(threads))
+                points = reduce(lambda a, b: np.concatenate((a,b)), points)
+                points = points.reshape(-1, 3)
+                writePoints(points, "data/points" + str(fourthVal) + ".csv")
         else:
-            points = readPoints("points" + str(fourthVal) + ".txt")
+            points = readPoints("data/points" + str(fourthVal) + ".csv")
         if thingToDraw["draw"]:
             pointArray.append(points)
             nameArray.append("Data")
