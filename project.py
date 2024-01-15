@@ -23,10 +23,10 @@ thingsToDraw = [
         {"name": "data",   "draw": True,  "regen": False, "check": False},
         {"name": "sphube", "draw": False, "regen": False, "check": False},
         {"name": "cone",   "draw": False, "regen": False, "check": False},
-        {"name": "test",   "draw": False,  "regen": False,  "check": False},
+        {"name": "test",   "draw": True,  "regen": True,  "check": False},
     ]
-optimizeSDP = True
-fourthVal = 1.0
+optimizeSDP = False
+fourthVal = 0.0
 threads = 10
 thresh = 0.30
 tol = 0.01
@@ -160,13 +160,8 @@ def getPointsUniformCone(a):
     points = points[hull.vertices,:]
     return points
 
-# Check if a point is in the test domain
+# Check if a point is in the test domain TODO
 def checkPointTest(x, y, z):
-    # term = x**2 + y**2 + z**2 + 2*x*y*z
-    # return term <= 1
-    # X = [[1, term, term], 
-         # [0, 1, term], 
-         # [0, 0, 1]]
     a = fourthVal
     x2 = x**2
     y2 = y**2
@@ -176,26 +171,42 @@ def checkPointTest(x, y, z):
     t = x2 + y2 + z2 + a2
     # X0 = [[1, term], 
          # [0, 1+sumPrd]]
-    X0 = [[2, t, t], 
-         [0, 1+s, t], 
-         [0, 0, 1+s]]
+    # X0 = [[2, t, t], 
+         # [0, 1+s, t], 
+         # [0, 0, 1+s]]
     # X0 = [[1, x2, y2, z2], 
          # [0, 1+x2, 0, 0], 
          # [0, 0, 1+y2, 0],
          # [0, 0, 0, 1+z2]]
-    X1 = [[1, x, y], 
-         [0, 1, a*z], 
-         [0, 0, 1]]
-    X0 = np.array(X0)
-    X1 = np.array(X1)
-    X = a*a*X1 + (1-a*a)*X0
+    # X1 = [[1, x, y], 
+         # [0, 1, a*z], 
+         # [0, 0, 1]]
+    # X0 = np.array(X0)
+    # X1 = np.array(X1)
+    # X = a*a*X1 + (1-a*a)*X0
     # X = X0
     # b = x*y*z*a
     # c = x*x + y*y + z*z + a*a
-    X = [[1, 0, x, y], 
-         [0, 1, z, a], 
-         [0, 0, 1, 0],
-         [0, 0, 0, 1]]
+    # X = [[1, x, 0, x], 
+         # [0, 1, y, 0], 
+         # [0, 0, 1, z],
+         # [0, 0, 0, 1]]
+    # X = [[2, t], 
+         # [0, 1+s]]
+    # X = [[2, t, t, t], 
+         # [0, 1+s, t, t], 
+         # [0, 0, 1+s, t],
+         # [0, 0, 0, 1+s]]
+    # X = [[1, x, y, 0, 0], 
+         # [0, 2, z, 0, 0], 
+         # [0, 0, 1, 0, 0],
+         # [0, 0, 0, 1, 0],
+         # [0, 0, 0, 0, 1]]
+    e = 3 - s
+    X = [[e, x, 0, 0], 
+         [0, e, y, 0], 
+         [0, 0, e, z],
+         [0, 0, 0, e]]
     X = np.array(X)
     for i in range(X.shape[0]):
         for j in range(0, i):
@@ -220,9 +231,12 @@ def getPointsUniformTest(a):
             if a == 0:
                 print(100.0*threads*float(count)/(pointsPer**3), "%")
     points = np.array(points)
-    hull = ConvexHull(points)
-    points = points[hull.vertices,:]
-    return points
+    if len(points) > 0:
+        hull = ConvexHull(points)
+        points = points[hull.vertices,:]
+        return points
+    else:
+        return np.array([])
 
 # Write points to a file
 def writePoints(points, filename):
@@ -413,7 +427,7 @@ if optimizeSDP:
         pool2 = Pool(threads)
         toSplit2 = [(finalVec, matSize, i) for i in range(threads)]
         points2 = pool2.map(getPointsUniformCustom, toSplit2)
-        points2 = reduce(lambda a, b: np.concatenate((a,b)), points2)
+        points2 = reduce(concat, points2)
         points2 = points2.reshape(-1, 3)
         pointArray.append(points2)
         nameArray.append("Custom")
@@ -421,12 +435,21 @@ if optimizeSDP:
         pool2 = Pool(threads)
         toSplit2 = [(finalVec, matSize, i) for i in range(threads)]
         points2 = pool2.map(getPointsUniformCustom4, toSplit2)
-        points2 = reduce(lambda a, b: np.concatenate((a,b)), points2)
+        points2 = reduce(concat, points2)
         points2 = points2.reshape(-1, 3)
         pointArray.append(points2)
         nameArray.append("Custom")
     else:
         exit()
+
+# Join two numpy arrays together if they aren't empty
+def concat(a, b):
+    if a.shape[0] == 0:
+        return b
+    elif b.shape[0] == 0:
+        return a
+    else:
+        return np.concatenate((a,b))
 
 # For each thing to each draw or recalulate
 for thingToDraw in thingsToDraw:
@@ -451,7 +474,7 @@ for thingToDraw in thingsToDraw:
         if thingToDraw["regen"]:
             pool2 = Pool(threads)
             points2 = pool2.map(getPointsUniformSphube, range(threads))
-            points2 = reduce(lambda a, b: np.concatenate((a,b)), points2)
+            points2 = reduce(concat, points2)
             points2 = points2.reshape(-1, 3)
             writePoints(points2, "data/pointsSphube.csv")
         else:
@@ -465,7 +488,7 @@ for thingToDraw in thingsToDraw:
         if thingToDraw["regen"]:
             pool3 = Pool(threads)
             points3 = pool3.map(getPointsUniformCone, range(threads))
-            points3 = reduce(lambda a, b: np.concatenate((a,b)), points3)
+            points3 = reduce(concat, points3)
             points3 = points3.reshape(-1, 3)
             writePoints(points3, "data/pointsCone.csv")
         else:
@@ -479,7 +502,7 @@ for thingToDraw in thingsToDraw:
         if thingToDraw["regen"]:
             pool3 = Pool(threads)
             points3 = pool3.map(getPointsUniformTest, range(threads))
-            points3 = reduce(lambda a, b: np.concatenate((a,b)), points3)
+            points3 = reduce(concat, points3)
             points3 = points3.reshape(-1, 3)
             writePoints(points3, "data/pointsTest.csv")
         else:
@@ -495,7 +518,7 @@ for thingToDraw in thingsToDraw:
                 fourthVal = val
                 pool = Pool(threads)
                 points = pool.map(getPointsUniform, range(threads))
-                points = reduce(lambda a, b: np.concatenate((a,b)), points)
+                points = reduce(concat, points)
                 points = points.reshape(-1, 3)
                 writePoints(points, "data/points" + str(fourthVal) + ".csv")
         else:
