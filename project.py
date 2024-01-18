@@ -23,17 +23,17 @@ thingsToDraw = {
         "data"     : {"draw": True,  "regen": False, "check": False},
         "sphube"   : {"draw": False, "regen": False, "check": False},
         "cone"     : {"draw": False, "regen": False, "check": False},
-        "test"     : {"draw": False,  "regen": False,  "check": False},
-        "optimized": {"draw": True,  "regen": True,  "check": False},
-        # "test"     : {"draw": True,  "regen": True,  "check": False},
-        # "optimized": {"draw": False,  "regen": False,  "check": False},
+        # "test"     : {"draw": False,  "regen": False,  "check": False},
+        # "optimized": {"draw": True,  "regen": True,  "check": False},
+        "test"     : {"draw": True,  "regen": True,  "check": False},
+        "optimized": {"draw": False,  "regen": False,  "check": False},
     }
 fourthVal = 0.0
 # fourthVal = 0.24137931034482762
 # fourthVal = 0.5172413793103448
 # fourthVal = 0.7931034482758621
 # fourthVal = 1.0
-limMin = 0.2
+limMin = -1.1
 limMax = 1.1
 threads = 10
 thresh = 0.30
@@ -185,15 +185,21 @@ def checkPointTest(x, y, z):
     s4 = x2*y2*z2*a2
     # return s1 - s2 + s3 <= 4 and abs(x) <= 1 and abs(y) <= 1 and abs(z) <= 1
     # return s1 - 1.0*s2 + 1.5*s3 <= 1
-    # return s1 <= 2.3
+    # return s1 <= 2.3 and abs(x) <= 1 and abs(y) <= 1 and abs(z) <= 1
     # TODO found a pretty good approx
-    # X0 = [[1, t, t], 
-          # [0, 1+s+l, t], 
-          # [0, 0, 1+s+l]]
-    X0 = [[2, x, 0, 0], 
-          [0, 1, y, 0], 
-          [0, 0, 1, z],
-          [0, 0, 0, 2]]
+
+    # X0 = [[2, s1, s1], 
+          # [0, 1+s2, s1], 
+          # [0, 0, 1+s2]]
+    X0 = [[1, x, y, z], 
+          [0, 1, 0, 0], 
+          [0, 0, 1, 0],
+          [0, 0, 0, 1]]
+    X0 = [[1, x, y, z, 0], 
+          [0, 1, 0, 0, z], 
+          [0, 0, 1, 0, y],
+          [0, 0, 0, 1, x],
+          [0, 0, 0, 0, 1]]
     X1 = [[1, x, y], 
           [0, 1, z], 
           [0, 0, 1]]
@@ -334,28 +340,34 @@ def checkPointCustom(vec, point, numMats, matSize):
     y2 = y*y
     z2 = z*z
     a2 = a*a
+    x4 = x2*x2
+    y4 = y2*y2
+    z4 = z2*z2
+    a4 = a2*a2
     s0 = x + y + z + a
     s1 = x2 + y2 + z2 + a2
     s2 = x2*y2 + z2*(x2 + y2) + a2*(x2 + y2 + z2)
     s3 = x2*y2*z2 + a2*(x2*y2 + z2*(x2 + y2))
     s4 = x2*y2*z2*a2
+    t1 = x4 + y4 + z4 + a4
+    t2 = x4*y4 + z4*(x4 + y4) + a4*(x4 + y4 + z4)
+    t3 = x4*y4*z4 + a4*(x4*y4 + z4*(x4 + y4))
+    t4 = x4*y4*z4*a4
     # TODO
-    # dist = abs(vec[0] + vec[1]*x2 + vec[2]*y2 + vec[3]*z2 
-                       # + vec[4]*x2*y2 + vec[5]*x2*z2 + vec[6]*y2*z2
-                       # + vec[7]*x2*y2*z2 
-                # )
-    X = [[vec[0], vec[1]*s0, vec[2]*s1, vec[3]*s2],
-         [0, 1, 0, 0],
-         [0, 0, 1, 0],
-         [0, 0, 0, 1]]
-    X = np.array(X)
-    for i in range(X.shape[0]):
-        for j in range(0, i):
-            if X[i,j] == 0:
-                X[i,j] = X[j,i]
-    vals, vecs = np.linalg.eig(X)
-    dist = min(vals)
+    dist = abs(vec[0] + vec[1]*s1)
     return dist
+    # X = [[vec[0], vec[1]*s0, vec[2]*s1, vec[3]*s2],
+         # [0, 1, 0, 0],
+         # [0, 0, 1, 0],
+         # [0, 0, 0, 1]]
+    # X = np.array(X)
+    # for i in range(X.shape[0]):
+        # for j in range(0, i):
+            # if X[i,j] == 0:
+                # X[i,j] = X[j,i]
+    # vals, vecs = np.linalg.eig(X)
+    # dist = min(vals)
+    # return dist
 
 # Cost function for fitting the cone
 def cost(vec, points, numMats, matSize):
@@ -380,8 +392,8 @@ def getPointsUniformCustom(args):
                 count += 1
                 if checkPointCustom(coeffs, [var1, var2, var3], numMats, matSize) <= 1e-3:
                     points.append([var1, var2, var3])
-            if a == 0:
-                print(100.0*threads*float(count)/(pointsPer**3), "%")
+        if a == 0:
+            print(100.0*threads*float(count)/(pointsPer**3), "%")
     points = np.array(points)
     return points
 
@@ -412,40 +424,8 @@ if thingsToDraw["optimized"]["regen"]:
     allPoints = readPoints("data/points" + str(fourthVal) + ".csv")
     points = []
     pointsToSample = 1000000000
-    numVars = 10
+    numVars = 9
     # numVars = numMats * ((matSize*(matSize+1)//2) * (2*allPoints.shape[1]+1))
-    # vec = np.array([1 for i in range(numVars)])
-    # vec = np.zeros(numVars)
-    vec = np.random.rand(numVars)
-    # vec = np.array([-0.21806701, -0.30024651, -0.2024949 , -0.15697767, -0.12269202,
-       # -0.482077  ,  0.26369564,  0.28087138, -0.21673742, -0.02869441,
-       # -0.22670792,  0.08536931, -0.09920705, -0.0567977 , -0.23431801,
-       # -0.07499742, -0.50900859,  0.13968817,  0.15751262,  0.40836086,
-        # 0.50056849,  0.09140297, -0.13158019,  0.47424429,  0.12773484,
-       # -0.22482994, -0.38876055,  0.31887217, -0.06631954, -0.01572061,
-       # -0.27017813, -0.09920275,  0.24522633, -0.15417556,  0.32584317,
-       # -0.09420153, -0.02195686,  0.27172932, -0.00135903,  0.05110155])
-    # 4x4 with diags, 1+x+y+z+a, 0.08
-    # vec = np.array([2.50204461, 0.46072533, 0.54954365, 0.60548681, 0.89528628,
-       # 1.65300713, 0.63412646, 0.98233975, 0.89811249, 0.91462576,
-       # 2.30651061, 1.0603816 , 0.83007196, 0.7812964 , 0.63145827,
-       # 1.21029969, 0.62853171, 0.75748408, 0.66273371, 0.6183474 ,
-       # 1.3480396 , 0.71374652, 0.71004322, 0.75188841, 0.80662968,
-       # 1.49870684, 0.66534408, 0.66269906, 0.70416922, 0.72317737,
-       # 1.30149258, 0.55528545, 0.83009985, 0.69863133, 0.72194382,
-       # 1.60931153, 0.79127652, 0.75554167, 0.71476768, 0.78762482,
-       # 1.43447154, 0.66580072, 0.67826922, 0.69606782, 0.76085554,
-       # 1.4696805 , 0.68817808, 0.70538556, 0.67340316, 0.78624887])
-    # vec = np.array([3.69819251, 0.31402345, 0.49310877, 0.44285137, 0.7493408 ,
-       # 1.66339902, 0.51581952, 0.96991807, 0.87361816, 0.92034605,
-       # 2.3898406 , 1.03594344, 0.86404434, 0.73793836, 0.69029193,
-       # 1.47243881, 0.6213243 , 0.72831116, 0.66841164, 0.6077565 ,
-       # 1.38059935, 0.68324497, 0.66682239, 0.73401832, 0.76269395,
-       # 1.53973629, 0.64654947, 0.65076476, 0.68499182, 0.69765895,
-       # 1.31958472, 0.55029784, 0.79959957, 0.67877301, 0.71408517,
-       # 1.6276709 , 0.76874916, 0.73333071, 0.69923296, 0.75784035,
-       # 1.47260647, 0.64364378, 0.64613486, 0.66667042, 0.74234814,
-       # 1.50784845, 0.67151023, 0.66831342, 0.64819513, 0.76928514])
     pointsToSample = min(pointsToSample, len(allPoints))
     for i in range(pointsToSample):
         rand = random.randint(0, len(allPoints)-1)
@@ -453,12 +433,12 @@ if thingsToDraw["optimized"]["regen"]:
         np.delete(allPoints, rand)
     points = np.array(points)
 
+    # TODO
     converge = 1e-6
     maxIters = 1000
-    # res = minimize(cost, vec, args = (points, matSize), method = "nelder-mead", tol = 1e-8, options = {"maxiter": 10000})
-    # res = minimize(cost, vec, args = (points, matSize), method = "BFGS", tol = 1e-8, options = {"maxiter": 10000})
-    # res = minimize(cost, vec, args = (points, matSize), method = "L-BFGS-B", tol = 1e-2, options = {"maxiter": 10000})
-    res = minimize(cost, vec, args = (points, numMats, matSize), method = "COBYLA", tol = converge, options = {"maxiter": maxIters})
+    vec = np.random.rand(numVars)
+    res = minimize(cost, vec, args = (points, numMats, matSize), method = "L-BFGS-B", tol = converge, options = {"maxiter": maxIters})
+    # res = minimize(cost, vec, args = (points, numMats, matSize), method = "COBYLA", tol = converge, options = {"maxiter": maxIters})
     print("result = ", res)
     finalVec = np.array(res.x)
 
