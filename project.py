@@ -21,11 +21,11 @@ random.seed(0)
 thingsToDraw = {
         "box"      : {"draw": False,  "regen": False, "check": False},
         "data"     : {"draw": True,  "regen": False, "check": False},
-        "sphube"   : {"draw": False, "regen": False, "check": False},
+        "sphube"   : {"draw": True, "regen": False, "check": False},
         "cone"     : {"draw": False, "regen": False, "check": False},
-        # "test"     : {"draw": False,  "regen": False,  "check": False},
+        "test"     : {"draw": False,  "regen": False,  "check": False},
         # "optimized": {"draw": True,  "regen": True,  "check": False},
-        "test"     : {"draw": True,  "regen": True,  "check": False},
+        # "test"     : {"draw": True,  "regen": True,  "check": False},
         "optimized": {"draw": False,  "regen": False,  "check": False},
     }
 fourthVal = 0.0
