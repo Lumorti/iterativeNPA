@@ -21,17 +21,18 @@ random.seed(0)
 thingsToDraw = {
         "box"      : {"draw": False,  "regen": False, "check": False},
         "data"     : {"draw": True,  "regen": False, "check": False},
-        "sphube"   : {"draw": True, "regen": False, "check": False},
+        "sphube"   : {"draw": False, "regen": False, "check": False},
         "cone"     : {"draw": False, "regen": False, "check": False},
-        "test"     : {"draw": False,  "regen": False,  "check": False},
-        # "optimized": {"draw": True,  "regen": True,  "check": False},
-        # "test"     : {"draw": True,  "regen": True,  "check": False},
+        # "test"     : {"draw": False,  "regen": False,  "check": False},
         "optimized": {"draw": False,  "regen": False,  "check": False},
+        # "optimized": {"draw": True,  "regen": True,  "check": False},
+        "test"     : {"draw": True,  "regen": True,  "check": False},
     }
-fourthVal = 0.0
+# fourthVal = 0.0
 # fourthVal = 0.24137931034482762
 # fourthVal = 0.5172413793103448
 # fourthVal = 0.7931034482758621
+fourthVal = 0.9310344827586206
 # fourthVal = 1.0
 limMin = -1.1
 limMax = 1.1
@@ -173,7 +174,10 @@ def getPointsUniformCone(a):
 
 # Check if a point is in the test domain
 def checkPointTest(x, y, z):
+
     a = fourthVal
+    b = 3*(1-a)
+
     x2 = x**2
     y2 = y**2
     z2 = z**2
@@ -188,18 +192,22 @@ def checkPointTest(x, y, z):
     # return s1 <= 2.3 and abs(x) <= 1 and abs(y) <= 1 and abs(z) <= 1
     # TODO found a pretty good approx
 
-    # X0 = [[2, s1, s1], 
-          # [0, 1+s2, s1], 
-          # [0, 0, 1+s2]]
-    X0 = [[1, x, y, z], 
-          [0, 1, 0, 0], 
-          [0, 0, 1, 0],
-          [0, 0, 0, 1]]
-    X0 = [[1, x, y, z, 0], 
-          [0, 1, 0, 0, z], 
-          [0, 0, 1, 0, y],
-          [0, 0, 0, 1, x],
-          [0, 0, 0, 0, 1]]
+    if abs(x) > 1 or abs(y) > 1 or abs(z) > 1:
+        return False
+    # X0 = [[2, s1], 
+          # [0, 1+s2]]
+    X0 = [[2, s1, s1], 
+          [0, 1+s2, s1], 
+          [0, 0, 1+s2]]
+    # X0 = [[1, x, y, z], 
+          # [x, 2, z, y], 
+          # [y, z, 2, x],
+          # [z, y, x, 1]]
+    # X0 = [[1, x, y, z, 0], 
+          # [0, 1, 0, 0, z], 
+          # [0, 0, 1, 0, y],
+          # [0, 0, 0, 1, x],
+          # [0, 0, 0, 0, 1]]
     X1 = [[1, x, y], 
           [0, 1, z], 
           [0, 0, 1]]
@@ -211,15 +219,12 @@ def checkPointTest(x, y, z):
     for i in range(X1.shape[0]):
         for j in range(0, i):
             X1[i,j] = X1[j,i]
-    # a = 0.0
     # b = 1 - a
-    # I = np.eye(3)
-    # ones = np.ones((3,3))
-    # offDiags = ones - I
-    # X = np.zeros((6,6))
-    # X[:3,:3] = X0 + a*I
-    # X[3:,3:] = X1 + b*I
-    X = X0
+    I = np.eye(3)
+    X = np.zeros((6,6))
+    X[:3,:3] = X0 + a*I
+    X[3:,3:] = X1 + b*I
+    # X = X0
     # b = 0.9
     # X[:3,:3] = I
     # X[3:,3:] = X1
