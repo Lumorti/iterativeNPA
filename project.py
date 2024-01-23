@@ -19,20 +19,19 @@ random.seed(0)
 
 # 3 or 10
 thingsToDraw = {
-        "box"      : {"draw": False,  "regen": False, "check": False},
-        "data"     : {"draw": True,  "regen": False, "check": False},
-        "sphube"   : {"draw": False, "regen": False, "check": False},
-        "cone"     : {"draw": False, "regen": False, "check": False},
-        # "test"     : {"draw": False,  "regen": False,  "check": False},
-        "optimized": {"draw": False,  "regen": False,  "check": False},
-        # "optimized": {"draw": True,  "regen": True,  "check": False},
-        "test"     : {"draw": True,  "regen": True,  "check": False},
+        "box"         : {"draw": False,  "regen": False, "check": False},
+        "data"        : {"draw": True,  "regen": False, "check": False},
+        "dataPartial" : {"draw": True, "regen": True, "check": False},
+        "sphube"      : {"draw": False, "regen": False, "check": False},
+        "cone"        : {"draw": False, "regen": False, "check": False},
+        "optimized"   : {"draw": False,  "regen": False,  "check": False},
+        "test"        : {"draw": False,  "regen": False,  "check": False},
     }
-# fourthVal = 0.0
+fourthVal = 0.0
 # fourthVal = 0.24137931034482762
 # fourthVal = 0.5172413793103448
 # fourthVal = 0.7931034482758621
-fourthVal = 0.9310344827586206
+# fourthVal = 0.9310344827586206
 # fourthVal = 1.0
 limMin = -1.1
 limMax = 1.1
@@ -63,6 +62,33 @@ def getPoints(a):
         if a == 0 and len(points) % (samples//10) == 0:
             print(100.0*float(len(points))/samples, "%")
     return points
+
+# Check if the four variable point is in the partial <10D cone TODO
+def checkPointPartial(var1, var2, var3, var4):
+    X = cp.Variable((4,4), symmetric=True)
+    cons = [
+        X[0,0] == 1,
+        X[1,1] == 1,
+        X[2,2] == 1,
+        X[3,3] == 1,
+        X[0,2] == var1,
+        X[0,3] == var2,
+        X[1,2] == var3,
+        X[1,3] == var4,
+        X[0,1] == 0.56,
+        X[2,3] == 0.56,
+        X >> 0
+    ]
+    prob = cp.Problem(cp.Minimize(0), cons)
+    try:
+        prob.solve(solver=cp.MOSEK, mosek_params={"MSK_IPAR_NUM_THREADS": 1})
+        lim = 0.8
+        if prob.status == "optimal":
+            if var1 > lim and var2 > lim and var3 > lim:
+                print(X.value)
+        return prob.status == "optimal"
+    except:
+        return False
 
 # Check if the four variable point is in the full 10D cone
 def checkPoint(var1, var2, var3, var4):
@@ -100,6 +126,26 @@ def getPointsUniform(a):
             for var3 in np.linspace(limMin, limMax, pointsPer):
                 count += 1
                 if checkPoint(var1, var2, var3, var4):
+                    points.append([var1, var2, var3])
+            if a == 0:
+                print(100.0*threads*float(count)/(pointsPer**3), "%")
+    points = np.array(points)
+    return points
+
+# Same as above, but sample uniformly over the target vars, but over a reduced region
+def getPointsUniformPartial(a):
+    points = []
+    var4 = fourthVal
+    print("Generating points for fourth variable = ", var4)
+    pointsPer = 40
+    count = 0
+    fullRegion = np.linspace(limMin, limMax, pointsPer)
+    localRegion = fullRegion[a*pointsPer//threads:(a+1)*pointsPer//threads]
+    for var1 in localRegion:
+        for var2 in np.linspace(limMin, limMax, pointsPer):
+            for var3 in np.linspace(limMin, limMax, pointsPer):
+                count += 1
+                if checkPointPartial(var1, var2, var3, var4):
                     points.append([var1, var2, var3])
             if a == 0:
                 print(100.0*threads*float(count)/(pointsPer**3), "%")
@@ -561,6 +607,22 @@ for name, thingToDraw in thingsToDraw.items():
                     writePoints(points, "data/points" + str(fourthVal) + ".csv")
         else:
             points = readPoints("data/points" + str(fourthVal) + ".csv")
+        if thingToDraw["draw"]:
+            pointArray.append(points)
+            nameArray.append(name)
+
+    # If told to draw the data for a specific fourth value
+    elif name == "dataPartial" and (thingToDraw["draw"] or thingToDraw["regen"]):
+        if thingToDraw["regen"]:
+            with Pool(threads) as pool:
+                points = pool.map(getPointsUniformPartial, range(threads))
+                points = reduce(concat, points)
+                points = points.reshape(-1, 3)
+                hull = ConvexHull(points)
+                points = points[hull.vertices,:]
+                writePoints(points, "data/pointsPartial" + str(fourthVal) + ".csv")
+        else:
+            points = readPoints("data/pointsPartial" + str(fourthVal) + ".csv")
         if thingToDraw["draw"]:
             pointArray.append(points)
             nameArray.append(name)
