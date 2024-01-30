@@ -3,12 +3,16 @@ from sympy import *
 n = Symbol('n')
 x = Symbol('x')
 y = Symbol('y')
+z = Symbol('z')
 a = symbols('a0:4')
 alpha = Symbol('alpha')
-M = Matrix([[1,    x,    a[0], a[1]], 
-            [x,    1,    a[2], a[3]],
-            [a[0], a[2], 1,    y],
-            [a[1], a[3], y,    1]])
+M = Matrix([[1,    x,    y], 
+            [x,    1,    z],
+            [y,    z,    1]])
+# M = Matrix([[1,    x,    a[0], a[1]], 
+            # [x,    1,    a[2], a[3]],
+            # [a[0], a[2], 1,    y],
+            # [a[1], a[3], y,    1]])
 
 det = M.det()
 print(det)

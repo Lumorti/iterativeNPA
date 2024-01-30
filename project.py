@@ -21,13 +21,13 @@ random.seed(0)
 thingsToDraw = {
         "box"         : {"draw": False,  "regen": False, "check": False},
         "data"        : {"draw": True,  "regen": False, "check": False},
-        "dataPartial" : {"draw": True, "regen": True, "check": False},
+        "dataPartial" : {"draw": False, "regen": False, "check": False},
         "sphube"      : {"draw": False, "regen": False, "check": False},
         "cone"        : {"draw": False, "regen": False, "check": False},
         "optimized"   : {"draw": False,  "regen": False,  "check": False},
-        "test"        : {"draw": False,  "regen": False,  "check": False},
+        "test"        : {"draw": True,  "regen": True,  "check": False},
     }
-fourthVal = 0.0
+fourthVal = 1.0
 # fourthVal = 0.24137931034482762
 # fourthVal = 0.5172413793103448
 # fourthVal = 0.7931034482758621
@@ -236,7 +236,8 @@ def checkPointTest(x, y, z):
     # return s1 - s2 + s3 <= 4 and abs(x) <= 1 and abs(y) <= 1 and abs(z) <= 1
     # return s1 - 1.0*s2 + 1.5*s3 <= 1
     # return s1 <= 2.3 and abs(x) <= 1 and abs(y) <= 1 and abs(z) <= 1
-    # TODO found a pretty good approx
+    return (-1+y**2)*(-1+z**2)-2*x*y*z*a-a**2+x**2*(-1+x**2) >= 0
+    # TODO 
 
     if abs(x) > 1 or abs(y) > 1 or abs(z) > 1:
         return False
