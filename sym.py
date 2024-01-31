@@ -9,33 +9,42 @@ numVars = 10
 x = Symbol('x')
 y = Symbol('y')
 z = Symbol('z')
+b = Symbol('b')
+c = Symbol('c')
 a = symbols('a0:%d' % numVars)
 x2 = x**2
 y2 = y**2
 z2 = z**2
 s1 = x2 + y2 + z2
 s2 = x2*y2 + z2*(x2 + y2)
-N = Matrix([[2, s1],
-            [s1, 1+s2]])
+# N = Matrix([[2, s1],
+            # [s1, 1+s2]])
 # N = Matrix([[2, s1, s1],
             # [s1, 1+s2, s1],
             # [s1, s1, 1+s2]])
-desired = N.det()
+# desired = N.det()
+desired = -(-1+x**2+y**2+z**2-2*x*y*z)
 # desired = 2 - x**4 - y**4 - z**4
 # desired = 1 - x**2 - y**2
+posibles = [0, 1, x, y, z]
+threads = 8
 # M = Matrix([[a[6], a[0], a[1], a[2]], 
             # [a[0], a[7], a[3], a[4]],
             # [a[1], a[3], a[8], a[5]],
             # [a[2], a[4], a[5], a[9]]])
-# M = Matrix([[2, a[0], a[1], a[2]], 
+M = Matrix([[1, a[0], a[1]], 
+            [a[0], 1, a[2]],
+            [a[1], a[3], 1]])
+numVars = 4
+# M = Matrix([[1, a[0], a[1], a[2]], 
             # [a[0], 1, a[3], a[4]],
             # [a[1], a[3], 1, a[5]],
             # [a[2], a[4], a[5], 1]])
-M = Matrix([[1, a[0], a[1], a[2], a[3]], 
-            [a[0], 1, a[4], a[5], a[6]],
-            [a[1], a[4], 1, a[7], a[8]],
-            [a[2], a[5], a[7], 1, a[9]],
-            [a[3], a[6], a[8], a[9], 1]])
+# M = Matrix([[1, a[0], a[1], a[2], a[3]], 
+            # [a[0], 1, a[4], a[5], a[6]],
+            # [a[1], a[4], 1, a[7], a[8]],
+            # [a[2], a[5], a[7], 1, a[9]],
+            # [a[3], a[6], a[8], a[9], 1]])
 
 def getMonoms(thing):
     asPoly = Poly(thing, [x, y, z])
@@ -49,9 +58,6 @@ det = M.det()
 print(desired)
 print(M.det())
 print(desiredMonoms)
-
-posibles = [0, x, y, z, 1]
-threads = 8
 
 def perCore(things):
     firstCore = False
