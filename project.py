@@ -26,8 +26,9 @@ thingsToDraw = {
         "cone"        : {"draw": False, "regen": False, "check": False},
         "optimized"   : {"draw": False,  "regen": False,  "check": False},
         "test"        : {"draw": True,  "regen": True,  "check": False},
+        "point"       : {"draw": True,  "regen": True,  "check": False},
     }
-fourthVal = 1.0
+fourthVal = 0.0
 # fourthVal = 0.24137931034482762
 # fourthVal = 0.5172413793103448
 # fourthVal = 0.7931034482758621
@@ -63,7 +64,7 @@ def getPoints(a):
             print(100.0*float(len(points))/samples, "%")
     return points
 
-# Check if the four variable point is in the partial <10D cone TODO
+# Check if the four variable point is in the partial <10D cone
 def checkPointPartial(var1, var2, var3, var4):
     X = cp.Variable((4,4), symmetric=True)
     cons = [
@@ -218,6 +219,9 @@ def getPointsUniformCone(a):
     points = np.array(points)
     return points
 
+def Sqrt(x):
+    return math.sqrt(x)
+
 # Check if a point is in the test domain
 def checkPointTest(x, y, z):
 
@@ -235,8 +239,12 @@ def checkPointTest(x, y, z):
     s4 = x2*y2*z2*a2
     # return s1 - s2 + s3 <= 4 and abs(x) <= 1 and abs(y) <= 1 and abs(z) <= 1
     # return s1 - 1.0*s2 + 1.5*s3 <= 1
-    # return s1 <= 2.3 and abs(x) <= 1 and abs(y) <= 1 and abs(z) <= 1
-    return (-1+y**2)*(-1+z**2)-2*x*y*z*a-a**2+x**2*(-1+x**2) >= 0
+    rt3o2 = math.sqrt(3.0)/2.0
+    # return x**4+y**4+z**4 <= 3.0*(rt3o2**4)
+    v = 1 - 3*Sqrt(3)*x - (28*x**2)/3.0 + 3*Sqrt(3)*x**3 + (25*x**4)/3.0 - y**2 + x**2*y**2 - 3*Sqrt(3)*z - 2*x*y**2*z - z**2 + x**2*z**2 + y**2*z**2 + 3*Sqrt(3)*z**3 
+    print(x,y,z,v)
+    return (abs(v) <= 1e-1)
+    # return (-1+y**2)*(-1+z**2)-2*x*y*z*a-a**2+x**2*(-1+x**2) >= 0
     # TODO 
 
     if abs(x) > 1 or abs(y) > 1 or abs(z) > 1:
@@ -320,6 +328,12 @@ def getPointsUniformTest(a):
     points = []
     pointsPer = 60
     count = 0
+    # TODO
+    # print(checkPointTest(0,0,0))
+    # print(checkPointTest(1,1,1))
+    # print(checkPointTest(-1,-1,-1))
+    # print()
+    # return np.array([])
     fullRegion = np.linspace(limMin, limMax, pointsPer)
     localRegion = fullRegion[a*pointsPer//threads:(a+1)*pointsPer//threads]
     for var1 in localRegion:
@@ -405,7 +419,6 @@ def checkPointCustom(vec, point, numMats, matSize):
     t2 = x4*y4 + z4*(x4 + y4) + a4*(x4 + y4 + z4)
     t3 = x4*y4*z4 + a4*(x4*y4 + z4*(x4 + y4))
     t4 = x4*y4*z4*a4
-    # TODO
     dist = abs(vec[0] + vec[1]*s1)
     return dist
     # X = [[vec[0], vec[1]*s0, vec[2]*s1, vec[3]*s2],
@@ -485,7 +498,7 @@ if thingsToDraw["optimized"]["regen"]:
         np.delete(allPoints, rand)
     points = np.array(points)
 
-    # TODO
+    # Optimization
     converge = 1e-6
     maxIters = 1000
     vec = np.random.rand(numVars)
@@ -594,6 +607,12 @@ for name, thingToDraw in thingsToDraw.items():
             pointArray.append(points)
             nameArray.append(name)
 
+    # If told to draw a test point
+    elif name == "point" and (thingToDraw["draw"] or thingToDraw["regen"]):
+        if thingToDraw["draw"]:
+            pointArray.append(np.array([[0.866,0.866,0.866]]))
+            nameArray.append(name)
+
     # If told to draw the data for a specific fourth value
     elif name == "data" and (thingToDraw["draw"] or thingToDraw["regen"]):
         if thingToDraw["regen"]:
@@ -695,10 +714,13 @@ if len(pointArray) > 0:
     styles = ["r-", "b-", "g-", "y-", "c-", "m-", "k-"]
     for i, points in enumerate(pointArray):
         style = styles[i]
-        hull = ConvexHull(points[:,:])
-        for s in hull.simplices:
-            s = np.append(s, s[0])
-            ax.plot(points[s, 0], points[s, 1], points[s, 2], style)
+        if points.shape[0] > 1:
+            hull = ConvexHull(points[:,:])
+            for s in hull.simplices:
+                s = np.append(s, s[0])
+                ax.plot(points[s, 0], points[s, 1], points[s, 2], style)
+        else:
+            ax.scatter(points[0,0], points[0,1], points[0,2], style)
         ax.plot([], [], style, label=nameArray[i])
     fig.tight_layout()
     fig.legend()
