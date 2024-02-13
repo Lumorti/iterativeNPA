@@ -118,7 +118,7 @@ def getPointsUniform(a):
     points = []
     var4 = fourthVal
     print("Generating points for fourth variable = ", var4)
-    pointsPer = 40
+    pointsPer = 100 # TODO
     count = 0
     fullRegion = np.linspace(limMin, limMax, pointsPer)
     localRegion = fullRegion[a*pointsPer//threads:(a+1)*pointsPer//threads]
@@ -241,14 +241,14 @@ def checkPointTest(x, y, z):
     # return s1 - 1.0*s2 + 1.5*s3 <= 1
     rt3o2 = math.sqrt(3.0)/2.0
     # return x**4+y**4+z**4 <= 3.0*(rt3o2**4)
-    v = 1 - 3*Sqrt(3)*x - (28*x**2)/3.0 + 3*Sqrt(3)*x**3 + (25*x**4)/3.0 - y**2 + x**2*y**2 - 3*Sqrt(3)*z - 2*x*y**2*z - z**2 + x**2*z**2 + y**2*z**2 + 3*Sqrt(3)*z**3 
-    print(x,y,z,v)
-    return (abs(v) <= 1e-1)
+    # v = 1 - 3*Sqrt(3)*x - (28*x**2)/3.0 + 3*Sqrt(3)*x**3 + (25*x**4)/3.0 - y**2 + x**2*y**2 - 3*Sqrt(3)*z - 2*x*y**2*z - z**2 + x**2*z**2 + y**2*z**2 + 3*Sqrt(3)*z**3 
+    # print(x,y,z,v)
+    # return (abs(v) <= 1e-1)
     # return (-1+y**2)*(-1+z**2)-2*x*y*z*a-a**2+x**2*(-1+x**2) >= 0
     # TODO 
-
     if abs(x) > 1 or abs(y) > 1 or abs(z) > 1:
         return False
+    return (s2 <= (rt3o2**4)*3)
     # X0 = [[2, s1], 
           # [0, 1+s2]]
     X0 = [[2, s1, s1], 
@@ -328,12 +328,6 @@ def getPointsUniformTest(a):
     points = []
     pointsPer = 60
     count = 0
-    # TODO
-    # print(checkPointTest(0,0,0))
-    # print(checkPointTest(1,1,1))
-    # print(checkPointTest(-1,-1,-1))
-    # print()
-    # return np.array([])
     fullRegion = np.linspace(limMin, limMax, pointsPer)
     localRegion = fullRegion[a*pointsPer//threads:(a+1)*pointsPer//threads]
     for var1 in localRegion:
@@ -616,7 +610,8 @@ for name, thingToDraw in thingsToDraw.items():
     # If told to draw the data for a specific fourth value
     elif name == "data" and (thingToDraw["draw"] or thingToDraw["regen"]):
         if thingToDraw["regen"]:
-            for val in np.linspace(limMin, limMax, 30):
+            # for val in np.linspace(limMin, limMax, 30):
+            for val in [fourthVal]:
                 fourthVal = val
                 with Pool(threads) as pool:
                     points = pool.map(getPointsUniform, range(threads))

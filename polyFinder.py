@@ -111,7 +111,7 @@ print(poly)
 # print(str(poly).replace('**', '^').replace('sqrt', '\[Sqrt]'))
 
 # Loop through all possible combinations of 1, -1, 0 for the coefficients b
-choices = [1, -1, 0, sqrt(3)]
+choices = [1, -1, 0]
 shouldBePositive = [
         {x: 0, y: 0.5, z: 0},
         {x: 0.2, y: 0.0, z: 0},
