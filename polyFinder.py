@@ -74,7 +74,6 @@ eqns.append(poly.subs({x:-1, y:0, z:0}))
 eqns.append(poly.subs({x:0, y:-1, z:0}))
 eqns.append(poly.subs({x:0, y:0, z:-1}))
 eqns.append(poly.subs({x:0, y:0, z:0})-1)
-eqns.append(poly.subs({x:1, y:1, z:1})+1)
 
 equalitiesUsed = []
 # for j in range(len(eqns)):
@@ -109,5 +108,47 @@ for i in range(len(symbols)):
 print(subDict)
 poly = poly.subs(subDict)
 print(poly)
-print(str(poly).replace('**', '^').replace('sqrt', '\[Sqrt]'))
+# print(str(poly).replace('**', '^').replace('sqrt', '\[Sqrt]'))
 
+# Loop through all possible combinations of 1, -1, 0 for the coefficients b
+choices = [1, -1, 0, sqrt(3)]
+shouldBePositive = [
+        {x: 0, y: 0.5, z: 0},
+        {x: 0.2, y: 0.0, z: 0},
+        {x: 0.2, y: 0.0, z: 0.2},
+        {x: 0.7, y: -0.3, z: 0.2},
+        {x: -0.2, y: -0.3, z: 0.5},
+        {x: -0.2, y: 0.3, z: -0.5}
+    ]
+shouldBeNegative = [
+        {x: 0, y: 2, z: 0},
+        {x: 2, y: 0, z: 0},
+        {x: 0, y: 0, z: 2},
+        {x: -1, y: -2, z: 0},
+        {x: -2, y: 0, z: 1},
+        {x: 1, y: 1, z: 1},
+        {x: -1, y: 1, z: 1},
+        {x: -1, y: -1, z: 1},
+        {x: -1, y: -1, z: -1},
+    ]
+for i in range(len(choices)**len(b)):
+    if i % 1000 == 0:
+        print(i, "/", len(choices)**len(b))
+    bVals = []
+    for j in range(len(b)):
+        bVals.append(choices[(i//(len(choices)**j))%len(choices)])
+    polyWithoutB = poly.subs({b[i]:bVals[i] for i in range(len(b))})
+    allGood = True
+    for point in shouldBePositive:
+        if polyWithoutB.subs(point) < 0:
+            allGood = False
+            break
+    for point in shouldBeNegative:
+        if polyWithoutB.subs(point) > 0:
+            allGood = False
+            break
+    if allGood:
+        print(bVals)
+        print(polyWithoutB)
+        print()
+        break
