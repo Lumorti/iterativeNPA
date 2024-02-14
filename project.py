@@ -34,7 +34,7 @@ fourthVal = 0.0
 # fourthVal = 0.7931034482758621
 # fourthVal = 0.9310344827586206
 # fourthVal = 1.0
-limMin = -1.1
+limMin = -1.0
 limMax = 1.1
 threads = 10
 thresh = 0.30
@@ -118,7 +118,7 @@ def getPointsUniform(a):
     points = []
     var4 = fourthVal
     print("Generating points for fourth variable = ", var4)
-    pointsPer = 100 # TODO
+    pointsPer = 100
     count = 0
     fullRegion = np.linspace(limMin, limMax, pointsPer)
     localRegion = fullRegion[a*pointsPer//threads:(a+1)*pointsPer//threads]
@@ -232,11 +232,16 @@ def checkPointTest(x, y, z):
     y2 = y**2
     z2 = z**2
     a2 = a**2
+    x4 = x**4
+    y4 = y**4
+    z4 = z**4
+    a4 = a**4
     m = x + y + z + a
     s1 = x2 + y2 + z2 + a2
     s2 = x2*y2 + z2*(x2 + y2) + a2*(x2 + y2 + z2)
     s3 = x2*y2*z2 + a2*(x2*y2 + x2*z2 + y2*z2)
     s4 = x2*y2*z2*a2
+    p1 = x4 + y4 + z4 + a4
     # return s1 - s2 + s3 <= 4 and abs(x) <= 1 and abs(y) <= 1 and abs(z) <= 1
     # return s1 - 1.0*s2 + 1.5*s3 <= 1
     rt3o2 = math.sqrt(3.0)/2.0
@@ -248,7 +253,9 @@ def checkPointTest(x, y, z):
     # TODO 
     if abs(x) > 1 or abs(y) > 1 or abs(z) > 1:
         return False
-    return (s2 <= (rt3o2**4)*3)
+    coeff = 1.0
+    # return (s1 + coeff*p1 <= (rt3o2**2)*3 + coeff*(rt3o2**4)*3)
+    return (-s1 - coeff*p1 + (rt3o2**2)*3 + coeff*(rt3o2**4)*3 >= 0.0)
     # X0 = [[2, s1], 
           # [0, 1+s2]]
     X0 = [[2, s1, s1], 
@@ -326,7 +333,7 @@ def checkPointTest(x, y, z):
 # Get the point cloud representation of the test region
 def getPointsUniformTest(a):
     points = []
-    pointsPer = 60
+    pointsPer = 80
     count = 0
     fullRegion = np.linspace(limMin, limMax, pointsPer)
     localRegion = fullRegion[a*pointsPer//threads:(a+1)*pointsPer//threads]
@@ -605,6 +612,8 @@ for name, thingToDraw in thingsToDraw.items():
     elif name == "point" and (thingToDraw["draw"] or thingToDraw["regen"]):
         if thingToDraw["draw"]:
             pointArray.append(np.array([[0.866,0.866,0.866]]))
+            nameArray.append(name)
+            pointArray.append(np.array([[1.0,1.0,0.5]]))
             nameArray.append(name)
 
     # If told to draw the data for a specific fourth value
