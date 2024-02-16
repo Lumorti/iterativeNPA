@@ -20,21 +20,22 @@ random.seed(0)
 # 3 or 10
 thingsToDraw = {
         "box"         : {"draw": False,  "regen": False, "check": False},
-        "data"        : {"draw": True,  "regen": False, "check": False},
+        "data"        : {"draw": True,  "regen": False, "check": True},
         "dataPartial" : {"draw": False, "regen": False, "check": False},
         "sphube"      : {"draw": False, "regen": False, "check": False},
         "cone"        : {"draw": False, "regen": False, "check": False},
         "optimized"   : {"draw": False,  "regen": False,  "check": False},
-        "test"        : {"draw": True,  "regen": True,  "check": False},
+        "test"        : {"draw": True,  "regen": True,  "check": True},
         "point"       : {"draw": True,  "regen": True,  "check": False},
     }
 fourthVal = 0.0
-# fourthVal = 0.24137931034482762
-# fourthVal = 0.5172413793103448
-# fourthVal = 0.7931034482758621
-# fourthVal = 0.9310344827586206
+# fourthVal = 0.25
+# fourthVal = 0.5
+# fourthVal = 0.75
 # fourthVal = 1.0
-limMin = -1.0
+pointsPer = 80
+pointsPerCheck = 40
+limMin = -1.1
 limMax = 1.1
 threads = 10
 thresh = 0.30
@@ -118,7 +119,6 @@ def getPointsUniform(a):
     points = []
     var4 = fourthVal
     print("Generating points for fourth variable = ", var4)
-    pointsPer = 100
     count = 0
     fullRegion = np.linspace(limMin, limMax, pointsPer)
     localRegion = fullRegion[a*pointsPer//threads:(a+1)*pointsPer//threads]
@@ -138,7 +138,6 @@ def getPointsUniformPartial(a):
     points = []
     var4 = fourthVal
     print("Generating points for fourth variable = ", var4)
-    pointsPer = 40
     count = 0
     fullRegion = np.linspace(limMin, limMax, pointsPer)
     localRegion = fullRegion[a*pointsPer//threads:(a+1)*pointsPer//threads]
@@ -174,7 +173,6 @@ def checkPointBox(x, y, z):
 # Get the point cloud representation of the squircle
 def getPointsUniformSphube(a):
     points = []
-    pointsPer = 60
     count = 0
     fullRegion = np.linspace(limMin, limMax, pointsPer)
     localRegion = fullRegion[a*pointsPer//threads:(a+1)*pointsPer//threads]
@@ -204,7 +202,6 @@ def checkPointCone(x, y, z):
 # Get the point cloud representation of the 3D SDP cone
 def getPointsUniformCone(a):
     points = []
-    pointsPer = 60
     count = 0
     fullRegion = np.linspace(limMin, limMax, pointsPer)
     localRegion = fullRegion[a*pointsPer//threads:(a+1)*pointsPer//threads]
@@ -236,6 +233,10 @@ def checkPointTest(x, y, z):
     y4 = y**4
     z4 = z**4
     a4 = a**4
+    x6 = x**6
+    y6 = y**6
+    z6 = z**6
+    a6 = a**6
     m = x + y + z + a
     s1 = x2 + y2 + z2 + a2
     s2 = x2*y2 + z2*(x2 + y2) + a2*(x2 + y2 + z2)
@@ -250,12 +251,15 @@ def checkPointTest(x, y, z):
     # print(x,y,z,v)
     # return (abs(v) <= 1e-1)
     # return (-1+y**2)*(-1+z**2)-2*x*y*z*a-a**2+x**2*(-1+x**2) >= 0
+
     # TODO 
     if abs(x) > 1 or abs(y) > 1 or abs(z) > 1:
         return False
-    coeff = 1.0
-    # return (s1 + coeff*p1 <= (rt3o2**2)*3 + coeff*(rt3o2**4)*3)
-    return (-s1 - coeff*p1 + (rt3o2**2)*3 + coeff*(rt3o2**4)*3 >= 0.0)
+    # coeff = (9.0/4.0 - 2.0) / ((1-rt3o2**2)**3)
+    # return 2 - s1 + 2*x*y*z*a + coeff*(1-x2)*(1-y2)*(1-z2)*(1-a2) >= 0
+    coeff = 16
+    return 2 - s1 + 2*x*y*z*a + coeff*(1-a2)*((1-x2)*(1-y2)*(1-z2)) + 0.0122924  >= 0
+
     # X0 = [[2, s1], 
           # [0, 1+s2]]
     X0 = [[2, s1, s1], 
@@ -333,7 +337,6 @@ def checkPointTest(x, y, z):
 # Get the point cloud representation of the test region
 def getPointsUniformTest(a):
     points = []
-    pointsPer = 80
     count = 0
     fullRegion = np.linspace(limMin, limMax, pointsPer)
     localRegion = fullRegion[a*pointsPer//threads:(a+1)*pointsPer//threads]
@@ -448,7 +451,6 @@ def cost(vec, points, numMats, matSize):
 def getPointsUniformCustom(args):
     coeffs, numMats, matSize, a = args
     points = []
-    pointsPer = 60
     count = 0
     fullRegion = np.linspace(limMin, limMax, pointsPer)
     localRegion = fullRegion[a*pointsPer//threads:(a+1)*pointsPer//threads]
@@ -467,7 +469,6 @@ def getPointsUniformCustom(args):
 def getPointsUniformCustom4(args):
     coeffs, numMats, matSize, a = args
     points = []
-    pointsPer = 60
     count = 0
     fullRegion = np.linspace(limMin, limMax, pointsPer)
     localRegion = fullRegion[a*pointsPer//threads:(a+1)*pointsPer//threads]
@@ -613,8 +614,6 @@ for name, thingToDraw in thingsToDraw.items():
         if thingToDraw["draw"]:
             pointArray.append(np.array([[0.866,0.866,0.866]]))
             nameArray.append(name)
-            pointArray.append(np.array([[1.0,1.0,0.5]]))
-            nameArray.append(name)
 
     # If told to draw the data for a specific fourth value
     elif name == "data" and (thingToDraw["draw"] or thingToDraw["regen"]):
@@ -658,10 +657,9 @@ def checkAll(a):
         for name2, thing2 in thingsToDraw.items():
             if thing["check"] and thing2["check"]:
                 counts[(name, name2)] = 0
-    pointsPer = 20
     count = 0
-    fullRegion = np.linspace(limMin, limMax, pointsPer)
-    localRegion = fullRegion[a*pointsPer//threads:(a+1)*pointsPer//threads]
+    fullRegion = np.linspace(limMin, limMax, pointsPerCheck)
+    localRegion = fullRegion[a*pointsPerCheck//threads:(a+1)*pointsPerCheck//threads]
     for var1 in localRegion:
         for var2 in fullRegion:
             for var3 in fullRegion:
@@ -681,12 +679,16 @@ def checkAll(a):
                     for name2, thing2 in thingsToDraw.items():
                         if thing["check"] and thing2["check"]:
                             counts[(name, name2)] += (results[name] == results[name2])
+                            if results[name] != results[name2]:
+                                print(var1, var2, var3)
+                                print(name, results[name])
+                                print(name2, results[name2])
             if a == 0:
-                print(100.0*threads*float(count)/(pointsPer**3), "%")
+                print(100.0*threads*float(count)/(pointsPerCheck**3), "%")
     for name, thing in thingsToDraw.items():
         for name2, thing2 in thingsToDraw.items():
             if thing["check"] and thing2["check"]:
-                counts[(name, name2)] *= 100.0 / float(pointsPer**3)
+                counts[(name, name2)] *= 100.0 / float(pointsPerCheck**3)
     return counts
 
 # If we need to do any analysis
