@@ -3,11 +3,15 @@ import sympy as sp
 import numpy as np
 import cvxpy as cp
 import random
+import math
 
 X = cp.Variable((4,4), symmetric=True)
 x = cp.Variable()
 y = cp.Variable()
 z = cp.Variable()
+a = cp.Variable()
+b = cp.Variable()
+c = cp.Variable()
 cons = [
     X[0,0] == 1,
     X[1,1] == 1,
@@ -16,10 +20,18 @@ cons = [
     X[0,2] == x,
     X[0,3] == y,
     X[1,2] == z,
-    X[1,3] == 0,
+    X[1,3] == a,
+    X[2,3] == c,
+    X[0,1] == b,
+    a == 0,
+    # z == 0.5,
+    # c == math.sqrt(3)/2,
+    x == 1.0/(2*math.sqrt(2-math.sqrt(3))),
+    y == 1.0/(2*math.sqrt(2-math.sqrt(3))),
+    # y == 1.0,
     X >> 0
 ]
-prob = cp.Problem(cp.Maximize(x+y), cons)
+prob = cp.Problem(cp.Maximize(x+y+z), cons)
 prob.solve(solver=cp.MOSEK, mosek_params={"MSK_IPAR_NUM_THREADS": 1})
 print(prob.status)
 print(prob.value)

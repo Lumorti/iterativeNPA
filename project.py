@@ -17,7 +17,8 @@ matplotlib.use("GTK4Agg")
 np.random.seed(0)
 random.seed(0)
 
-# 3 or 10
+# Which things to draw, regenerate, and check
+onlyCheckEdge = True
 thingsToDraw = {
         "box"         : {"draw": False,  "regen": False, "check": False},
         "data"        : {"draw": True,  "regen": False, "check": True},
@@ -33,11 +34,11 @@ fourthVal = 0.0
 # fourthVal = 0.5
 # fourthVal = 0.75
 # fourthVal = 1.0
-pointsPer = 80
-pointsPerCheck = 40
-limMin = -1.1
-limMax = 1.1
-threads = 10
+pointsPer = 120
+pointsPerCheck = 30
+limMin = -1.05
+limMax = 1.05
+threads = 8
 thresh = 0.30
 tol = 0.01
 
@@ -77,23 +78,17 @@ def checkPointPartial(var1, var2, var3, var4):
         X[0,3] == var2,
         X[1,2] == var3,
         X[1,3] == var4,
-        X[0,1] == 0.56,
-        X[2,3] == 0.56,
         X >> 0
     ]
     prob = cp.Problem(cp.Minimize(0), cons)
     try:
         prob.solve(solver=cp.MOSEK, mosek_params={"MSK_IPAR_NUM_THREADS": 1})
-        lim = 0.8
-        if prob.status == "optimal":
-            if var1 > lim and var2 > lim and var3 > lim:
-                print(X.value)
         return prob.status == "optimal"
     except:
         return False
 
 # Check if the four variable point is in the full 10D cone
-def checkPoint(var1, var2, var3, var4):
+def checkPoint(var1, var2, var3, var4, minEig=False):
     X = cp.Variable((5,5), symmetric=True)
     cons = [
         X[0,0] == 1,
@@ -110,7 +105,11 @@ def checkPoint(var1, var2, var3, var4):
     prob = cp.Problem(cp.Minimize(0), cons)
     try:
         prob.solve(solver=cp.MOSEK, mosek_params={"MSK_IPAR_NUM_THREADS": 1})
-        return prob.status == "optimal"
+        if minEig:
+            vals, vecs = np.linalg.eig(X.value)
+            return min(vals)
+        else:
+            return prob.status == "optimal"
     except:
         return False
 
@@ -143,12 +142,15 @@ def getPointsUniformPartial(a):
     localRegion = fullRegion[a*pointsPer//threads:(a+1)*pointsPer//threads]
     for var1 in localRegion:
         for var2 in np.linspace(limMin, limMax, pointsPer):
-            for var3 in np.linspace(limMin, limMax, pointsPer):
+            # for var3 in np.linspace(limMin, limMax, pointsPer):
+            # for var3 in [-0.9970588235294118, 0.9970588235294118]: # TODO
+            for var3 in [-1.0, 1.0]: # TODO
                 count += 1
                 if checkPointPartial(var1, var2, var3, var4):
                     points.append([var1, var2, var3])
             if a == 0:
-                print(100.0*threads*float(count)/(pointsPer**3), "%")
+                # print(100.0*threads*float(count)/(pointsPer**3), "%")
+                print(100.0*threads*float(count)/(2*pointsPer**2), "%") # TODO
     points = np.array(points)
     return points
 
@@ -257,8 +259,18 @@ def checkPointTest(x, y, z):
         return False
     # coeff = (9.0/4.0 - 2.0) / ((1-rt3o2**2)**3)
     # return 2 - s1 + 2*x*y*z*a + coeff*(1-x2)*(1-y2)*(1-z2)*(1-a2) >= 0
-    coeff = 16
-    return 2 - s1 + 2*x*y*z*a + coeff*(1-a2)*((1-x2)*(1-y2)*(1-z2)) + 0.0122924  >= 0
+    # return 1.0-x2-y2+0.5*x2*y2 >= 0.0
+    # coeff = 16
+    # return 2 - s1 + 2*x*y*z*a + coeff*(1-a2)*(1-x2)*(1-y2)*(1-z2) >= 0
+    coeff0 = -0.129841
+    coeff1 = -2.46812
+    coeff2 = -1.89493
+    coeff3 = 2.80297
+    coeff4 = -0.510448
+    # return 2 - s1 + 2*x*y*z*a + (1-a2)*(coeff1*(1-x2)*(1-y2)*(1-z2) + coeff2*x2*y2*z2 + coeff3*x*y*z) >= 0
+    return 2 - s1 + 2*x*y*z*a + (1-a2)*(1+coeff0*x*y*z+coeff1*x2*y2*z2+coeff2*(x2+y2+z2)+coeff3*(x2*y2+y2*z2+x2*z2)+coeff4*x4*y4*z4) >= 0 
+    # coeff = 6.15477
+    # return 2 - s1 + 2*x*y*z*a + coeff*(1-a2)*(1-0.5*x2-0.5*x4)*(1-0.5*y2-0.5*y4)*(1-0.5*z2-0.5*z4) >= 0
 
     # X0 = [[2, s1], 
           # [0, 1+s2]]
@@ -369,7 +381,7 @@ def readPoints(filename):
         points = []
         for line in f:
             x = [float(i) for i in line.split(",")]
-            if x[0] > limMin and x[0] < limMax and x[1] > limMin and x[1] < limMax and x[2] > limMin and x[2] < limMax:
+            if x[0] >= limMin and x[0] <= limMax and x[1] >= limMin and x[1] <= limMax and x[2] >= limMin and x[2] <= limMax:
                 points.append(x)
         print("Loaded ", len(points), " points")
         return np.array(points)
@@ -423,7 +435,10 @@ def checkPointCustom(vec, point, numMats, matSize):
     t2 = x4*y4 + z4*(x4 + y4) + a4*(x4 + y4 + z4)
     t3 = x4*y4*z4 + a4*(x4*y4 + z4*(x4 + y4))
     t4 = x4*y4*z4*a4
-    dist = abs(vec[0] + vec[1]*s1)
+    f = 2 - x2 - y2 - z2 - a2 + 2*x*y*z*a + (1-a2)*(vec[0] + vec[1]*s1 + vec[2]*s2 + vec[3]*s3 + vec[4]*s4 + vec[5]*t1 + vec[6]*t2 + vec[7]*t3 + vec[8]*t4)
+    dist = abs(f)
+    if abs(x) > 1 or abs(y) > 1 or abs(z) > 1:
+        return -1
     return dist
     # X = [[vec[0], vec[1]*s0, vec[2]*s1, vec[3]*s2],
          # [0, 1, 0, 0],
@@ -458,7 +473,7 @@ def getPointsUniformCustom(args):
         for var2 in fullRegion:
             for var3 in fullRegion:
                 count += 1
-                if checkPointCustom(coeffs, [var1, var2, var3], numMats, matSize) <= 1e-3:
+                if abs(checkPointCustom(coeffs, [var1, var2, var3], numMats, matSize)) <= 1e-3:
                     points.append([var1, var2, var3])
         if a == 0:
             print(100.0*threads*float(count)/(pointsPer**3), "%")
@@ -476,7 +491,7 @@ def getPointsUniformCustom4(args):
         for var2 in fullRegion:
             for var3 in fullRegion:
                 count += 1
-                if checkPointCustom(coeffs, [var1, var2, var3, fourthVal], numMats, matSize) <= 1e-3:
+                if checkPointCustom(coeffs, [var1, var2, var3, fourthVal], numMats, matSize) >= 1e-3:
                     points.append([var1, var2, var3])
             if a == 0:
                 print(100.0*threads*float(count)/(pointsPer**3), "%")
@@ -498,16 +513,23 @@ if thingsToDraw["optimized"]["regen"]:
         rand = random.randint(0, len(allPoints)-1)
         points.append(allPoints[rand])
         np.delete(allPoints, rand)
+    points.append([math.sqrt(3)/2, math.sqrt(3)/2, math.sqrt(3)/2])
+    points.append([-math.sqrt(3)/2, math.sqrt(3)/2, math.sqrt(3)/2])
+    points.append([math.sqrt(3)/2, -math.sqrt(3)/2, math.sqrt(3)/2])
+    points.append([math.sqrt(3)/2, math.sqrt(3)/2, -math.sqrt(3)/2])
     points = np.array(points)
 
     # Optimization
     converge = 1e-6
-    maxIters = 1000
+    maxIters = 10000
     vec = np.random.rand(numVars)
     res = minimize(cost, vec, args = (points, numMats, matSize), method = "L-BFGS-B", tol = converge, options = {"maxiter": maxIters})
     # res = minimize(cost, vec, args = (points, numMats, matSize), method = "COBYLA", tol = converge, options = {"maxiter": maxIters})
     print("result = ", res)
     finalVec = np.array(res.x)
+
+    print("eval at [1,1,0] = ", checkPointCustom(finalVec, [1,1,0], numMats, matSize))
+    print("eval at [sqrt(3)/2,sqrt(3)/2,sqrt(3)/2] = ", checkPointCustom(finalVec, [math.sqrt(3)/2,math.sqrt(3)/2,math.sqrt(3)/2], numMats, matSize))
 
     print("final vec = ", finalVec)
     cost(finalVec, points, numMats, matSize)
@@ -614,6 +636,11 @@ for name, thingToDraw in thingsToDraw.items():
         if thingToDraw["draw"]:
             pointArray.append(np.array([[0.866,0.866,0.866]]))
             nameArray.append(name)
+            x = math.sqrt(2.0+math.sqrt(2.0)) / 2.0
+            y = x
+            z = 1.0 / math.sqrt(2.0)
+            pointArray.append(np.array([[x,y,z]]))
+            nameArray.append(name)
 
     # If told to draw the data for a specific fourth value
     elif name == "data" and (thingToDraw["draw"] or thingToDraw["regen"]):
@@ -646,6 +673,7 @@ for name, thingToDraw in thingsToDraw.items():
                 writePoints(points, "data/pointsPartial" + str(fourthVal) + ".csv")
         else:
             points = readPoints("data/pointsPartial" + str(fourthVal) + ".csv")
+            print("loaded ", len(points), " points")
         if thingToDraw["draw"]:
             pointArray.append(points)
             nameArray.append(name)
@@ -675,16 +703,72 @@ def checkAll(a):
                     results["sphube"] = checkPointSphube(var1, var2, var3)
                 if thingsToDraw["data"]["check"]:
                     results["data"] = checkPoint(var1, var2, var3, fourthVal)
+                if thingsToDraw["dataPartial"]["check"]:
+                    results["data"] = checkPointPartial(var1, var2, var3, fourthVal)
                 for name, thing in thingsToDraw.items():
                     for name2, thing2 in thingsToDraw.items():
                         if thing["check"] and thing2["check"]:
                             counts[(name, name2)] += (results[name] == results[name2])
                             if results[name] != results[name2]:
                                 print(var1, var2, var3)
+                                if thingsToDraw["data"]["check"]:
+                                    minEig = checkPoint(var1, var2, var3, fourthVal, True)
+                                    print("minEig = ", minEig)
                                 print(name, results[name])
                                 print(name2, results[name2])
             if a == 0:
                 print(100.0*threads*float(count)/(pointsPerCheck**3), "%")
+    for name, thing in thingsToDraw.items():
+        for name2, thing2 in thingsToDraw.items():
+            if thing["check"] and thing2["check"]:
+                counts[(name, name2)] *= 100.0 / float(pointsPerCheck**3)
+    return counts
+
+# Same as above, but just the points exactly at the edge of the convex hull of the data
+# TODO
+def checkAllEdge(a):
+    counts = {}
+    for name, thing in thingsToDraw.items():
+        for name2, thing2 in thingsToDraw.items():
+            if thing["check"] and thing2["check"]:
+                counts[(name, name2)] = 0
+    count = 0
+    pointsToCheck = []
+    for i in range(len(pointArray)):
+        if nameArray[i] == "data" and thingsToDraw["data"]["check"]:
+            pointsToCheck = pointArray[i]
+            break
+        if nameArray[i] == "dataPartial" and thingsToDraw["dataPartial"]["check"]:
+            pointsToCheck = pointArray[i]
+            break
+    localRegion = pointsToCheck[a*pointsPerCheck//threads:(a+1)*pointsPerCheck//threads]
+    for (var1, var2, var3) in localRegion:
+        count += 1
+        results = {}
+        if thingsToDraw["box"]["check"]:
+            results["box"] = checkPointBox(var1, var2, var3)
+        if thingsToDraw["test"]["check"]:
+            results["test"] = checkPointTest(var1, var2, var3)
+        if thingsToDraw["cone"]["check"]:
+            results["cone"] = checkPointCone(var1, var2, var3)
+        if thingsToDraw["sphube"]["check"]:
+            results["sphube"] = checkPointSphube(var1, var2, var3)
+        if thingsToDraw["data"]["check"]:
+            results["data"] = True
+        if thingsToDraw["dataPartial"]["check"]:
+            results["dataPartial"] = True
+        for name, thing in thingsToDraw.items():
+            for name2, thing2 in thingsToDraw.items():
+                if thing["check"] and thing2["check"]:
+                    counts[(name, name2)] += (results[name] == results[name2])
+                    if results[name] != results[name2]:
+                        minEig = checkPoint(var1, var2, var3, fourthVal, True)
+                        print(var1, var2, var3)
+                        print("minEig = ", minEig)
+                        print(name, results[name])
+                        print(name2, results[name2])
+        if a == 0:
+            print(100.0*threads*float(count)/(pointsPerCheck**3), "%")
     for name, thing in thingsToDraw.items():
         for name2, thing2 in thingsToDraw.items():
             if thing["check"] and thing2["check"]:
@@ -699,7 +783,10 @@ for thing in thingsToDraw.values():
         break
 if checkAny:
     with Pool(threads) as pool:
-        results = pool.map(checkAll, range(threads))
+        if onlyCheckEdge:
+            results = pool.map(checkAllEdge, range(threads))
+        else:
+            results = pool.map(checkAll, range(threads))
         results = reduce(lambda a, b: {k: a.get(k, 0) + b.get(k, 0) for k in set(a) | set(b)}, results)
         print(results)
 
