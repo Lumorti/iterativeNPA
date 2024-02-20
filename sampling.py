@@ -4,6 +4,7 @@ import numpy as np
 import cvxpy as cp
 import random
 import math
+import itertools
 
 X = cp.Variable((4,4), symmetric=True)
 x = cp.Variable()
@@ -24,10 +25,10 @@ cons = [
     X[2,3] == c,
     X[0,1] == b,
     a == 0,
-    # z == 0.5,
+    z == (2+math.sqrt(2))/4.0,
     # c == math.sqrt(3)/2,
-    x == 1.0/(2*math.sqrt(2-math.sqrt(3))),
-    y == 1.0/(2*math.sqrt(2-math.sqrt(3))),
+    # x == 1.0/(2*math.sqrt(2-math.sqrt(3))),
+    # y == 1.0/(2*math.sqrt(2-math.sqrt(3))),
     # y == 1.0,
     X >> 0
 ]

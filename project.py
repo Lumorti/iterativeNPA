@@ -142,15 +142,12 @@ def getPointsUniformPartial(a):
     localRegion = fullRegion[a*pointsPer//threads:(a+1)*pointsPer//threads]
     for var1 in localRegion:
         for var2 in np.linspace(limMin, limMax, pointsPer):
-            # for var3 in np.linspace(limMin, limMax, pointsPer):
-            # for var3 in [-0.9970588235294118, 0.9970588235294118]: # TODO
-            for var3 in [-1.0, 1.0]: # TODO
+            for var3 in np.linspace(limMin, limMax, pointsPer):
                 count += 1
                 if checkPointPartial(var1, var2, var3, var4):
                     points.append([var1, var2, var3])
             if a == 0:
-                # print(100.0*threads*float(count)/(pointsPer**3), "%")
-                print(100.0*threads*float(count)/(2*pointsPer**2), "%") # TODO
+                print(100.0*threads*float(count)/(pointsPer**3), "%")
     points = np.array(points)
     return points
 
@@ -260,15 +257,22 @@ def checkPointTest(x, y, z):
     # coeff = (9.0/4.0 - 2.0) / ((1-rt3o2**2)**3)
     # return 2 - s1 + 2*x*y*z*a + coeff*(1-x2)*(1-y2)*(1-z2)*(1-a2) >= 0
     # return 1.0-x2-y2+0.5*x2*y2 >= 0.0
-    # coeff = 16
-    # return 2 - s1 + 2*x*y*z*a + coeff*(1-a2)*(1-x2)*(1-y2)*(1-z2) >= 0
-    coeff0 = -0.129841
-    coeff1 = -2.46812
-    coeff2 = -1.89493
-    coeff3 = 2.80297
-    coeff4 = -0.510448
-    # return 2 - s1 + 2*x*y*z*a + (1-a2)*(coeff1*(1-x2)*(1-y2)*(1-z2) + coeff2*x2*y2*z2 + coeff3*x*y*z) >= 0
-    return 2 - s1 + 2*x*y*z*a + (1-a2)*(1+coeff0*x*y*z+coeff1*x2*y2*z2+coeff2*(x2+y2+z2)+coeff3*(x2*y2+y2*z2+x2*z2)+coeff4*x4*y4*z4) >= 0 
+    coeff = 16
+    return 2 - s1 + 2*x*y*z*a + coeff*(1-a2)*(1-x2)*(1-y2)*(1-z2) >= 0
+    # coeff0 = 2.77186
+    # coeff1 = 2.85679
+    # coeff2 = -2.27138
+    # coeff3 = -1.01515
+    # coeff4 = -1.00968
+    # return 2 - s1 + 2*x*y*z*a + (1-a2)*(
+                        # 1
+                        # +coeff0*(x4+y4+z4)
+                        # +coeff1*(x2*y2*z2)
+                        # +coeff2*(x2+y2+z2)
+                        # +coeff3*(x4*y4*z4)
+                        # +coeff4*(x6*y6*z6)
+                        # -(x6+y6+z6)
+                    # ) >= 0 
     # coeff = 6.15477
     # return 2 - s1 + 2*x*y*z*a + coeff*(1-a2)*(1-0.5*x2-0.5*x4)*(1-0.5*y2-0.5*y4)*(1-0.5*z2-0.5*z4) >= 0
 
@@ -636,10 +640,19 @@ for name, thingToDraw in thingsToDraw.items():
         if thingToDraw["draw"]:
             pointArray.append(np.array([[0.866,0.866,0.866]]))
             nameArray.append(name)
-            x = math.sqrt(2.0+math.sqrt(2.0)) / 2.0
-            y = x
-            z = 1.0 / math.sqrt(2.0)
-            pointArray.append(np.array([[x,y,z]]))
+            pointArray.append(np.array([[math.sqrt(2.0+math.sqrt(2.0)) / 2.0,math.sqrt(2.0+math.sqrt(2.0)) / 2.0,1.0 / math.sqrt(2.0)]]))
+            nameArray.append(name)
+            pointArray.append(np.array([[
+                         math.sqrt((1.0+math.sqrt(391.0)/20.0)/2.0),
+                         math.sqrt((1.0+math.sqrt(391.0)/20.0)/2.0),
+                         3.0/20.0
+                     ]]))
+            nameArray.append(name)
+            pointArray.append(np.array([[
+                         1.0/(2*math.sqrt(2-math.sqrt(3))),
+                         1.0/(2*math.sqrt(2-math.sqrt(3))),
+                         1.0/2.0
+                     ]]))
             nameArray.append(name)
 
     # If told to draw the data for a specific fourth value
