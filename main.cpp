@@ -1976,7 +1976,7 @@ int main(int argc, char* argv[]) {
             std::cout << "Dual moment matrix: " << std::endl;
             std::cout << newMomentMat << std::endl << std::endl;
 
-            // TODO objective being the inner product with the primal solution
+            // Objective being the inner product with the primal solution
             newObjective = polynomial();
             for (int i=0; i<X.rows(); i++) {
                 for (int j=i; j<X.cols(); j++) {
@@ -2074,7 +2074,7 @@ int main(int argc, char* argv[]) {
 
         return 0;
 
-    // TODO check distance between sets
+    // Check distance between sets
     } else if (testing == 3) {
 
         std::vector<polynomialMatrix> momentMatricesL1 = generateAllMomentMatrices(objective, 1, -1, -1, use01);
@@ -2128,6 +2128,64 @@ int main(int argc, char* argv[]) {
             //std::cout << std::endl;
 
         }
+
+        return 0;
+
+    // Try optimizing Cholesky decomp TODO
+    } else if (testing == 4) {
+
+         // Set up the optimisation
+        Eigen::VectorXd x = Eigen::VectorXd::Zero(numVars);
+        optimData optData;
+        optData.objective = objectiveDual;
+        optData.equalityCons = equals;
+        optData.penalty = 1e8;
+        optData.numD = numD;
+
+        // Output all the variable values
+        std::cout << "Variable values: " << std::endl;
+        for (int i=0; i<varNames.size(); i++) {
+            std::cout << varNames[i] << ": " << varVals[i] << std::endl;
+        }
+
+        // Set the initial x
+        for (int i=0; i<numD; i++) {
+            x[i] = varVals[i+1];
+        }
+        for (int i=0; i<matSize; i++) {
+            for (int j=i; j<matSize; j++) {
+                x[numD + cholLocToInd(i, j, matSize)] = L(j, i);
+            }
+        }
+
+        // Check the initial cost
+        Eigen::VectorXd gradData = Eigen::VectorXd::Zero(numVars);
+        double startCost = gradFunction(x, &gradData, &optData);
+        std::cout << "Starting cost: " << startCost << std::endl;
+
+        // Settings for the optimiser
+        optim::algo_settings_t settings;
+        settings.print_level = verbosity;
+        settings.iter_max = maxIters;
+        settings.rel_objfn_change_tol = 1e-10;
+        settings.gd_settings.method = 6;
+        settings.lbfgs_settings.par_M = 10;
+        settings.lbfgs_settings.wolfe_cons_1 = 1e-3;
+        settings.lbfgs_settings.wolfe_cons_2 = 0.8;
+
+        // Level 3 uses 500MB and takes about 2 seconds
+        // Level 4 uses 10GB
+
+        // Optimise
+        if (maxIters > 0) {
+            optData.penalty = 1e3;
+            for (int i=0; i<10; i++) {
+                std::cout << "Optimising with " << numVars << " variables and penalty " << optData.penalty << std::endl;
+                bool success = optim::lbfgs(x, optFunction, &optData, settings);
+                std::cout << "Result = " << gradFunction(x, &gradData, &optData) << std::endl;
+                optData.penalty *= 2;
+            }
+        }   
 
         return 0;
 
