@@ -2308,7 +2308,7 @@ int main(int argc, char* argv[]) {
             std::cout << equals[i] << std::endl;
         }
 
-        // Set up the optimisation TODO
+        // Set up the optimisation
         Eigen::VectorXd x = Eigen::VectorXd::Zero(numVars);
         optimData optData;
         optData.objective = newObj;
@@ -2355,6 +2355,180 @@ int main(int argc, char* argv[]) {
                 optData.penalty *= 2;
             }
         }   
+
+        return 0;
+
+    // Try only keep track of the variables in the objective and guessing the rest
+    } else if (testing == 5) {
+
+        // Run a normal opt first
+        std::vector<double> varVals;
+        std::vector<monomial> varNames;
+        double res = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, 0, varNames, varVals, use01);
+        std::cout << "Result from MOSEK: " << res << std::endl;
+        int matSize = momentMatrices[0].size();
+        std::cout << "Objective: " << objective << std::endl;
+        std::cout << "Moment matrix: " << std::endl;
+        std::cout << momentMatrices[0] << std::endl;
+        std::cout << "Var names and vals: " << std::endl;
+        for (int i=0; i<varNames.size(); i++) {
+            std::cout << varNames[i] << " = " << varVals[i] << std::endl;
+        }
+
+        // Get the location of each variable to optimize
+        std::vector<double> objDir;
+        std::vector<monomial> varNamesInObj;
+        std::vector<std::vector<std::pair<int, int>>> varLocs;
+        for (int i=0; i<objective.size(); i++) {
+            std::vector<std::pair<int,int>> locs;
+            for (int j=0; j<matSize; j++) {
+                for (int k=j; k<matSize; k++) {
+                    if (momentMatrices[0][j][k].size() == 1 && momentMatrices[0][j][k][0].second == objective[i].second) {
+                        locs.push_back(std::make_pair(j, k));
+                        break;
+                    }
+                }
+            }
+            varLocs.push_back(locs);
+            objDir.push_back(objective[i].first);
+            varNamesInObj.push_back(objective[i].second);
+        }
+        int numVars = varLocs.size();
+        std::cout << "Num vars: " << numVars << std::endl;
+
+        // Get the locations of each other variable
+        std::vector<std::vector<std::pair<int, int>>> otherLocs;
+        for (int i=0; i<varNames.size(); i++) {
+            if (std::find(varNamesInObj.begin(), varNamesInObj.end(), varNames[i]) != varNamesInObj.end()) {
+                continue;
+            }
+            if (varNames[i] == monomial()) {
+                continue;
+            }
+            std::vector<std::pair<int,int>> locs;
+            for (int j=0; j<matSize; j++) {
+                for (int k=j; k<matSize; k++) {
+                    if (momentMatrices[0][j][k].size() == 1 && momentMatrices[0][j][k][0].second == varNames[i]) {
+                        locs.push_back(std::make_pair(j, k));
+                    }
+                }
+            }
+            otherLocs.push_back(locs);
+        }
+        int numOthers = otherLocs.size();
+        std::cout << "Num others: " << numOthers << std::endl;
+        
+        // Start from a state
+        std::vector<double> x = std::vector<double>(numVars, 0);
+        for (int i=0; i<numVars; i++) {
+            x[i] = 2.0*((double)rand()/(double)RAND_MAX)-1.0;
+        }
+        std::vector<double> others = std::vector<double>(numOthers, 0);
+
+        double alpha = 0.1;
+        for (int iter=0; iter<10; iter++) {
+
+            std::cout << std::endl;
+            std::cout << "iteration " << iter << std::endl;
+
+            // Check if the matrix with these vars can be made positive TODO
+            Eigen::MatrixXd A = Eigen::MatrixXd::Zero(matSize, matSize);
+            for (int i=0; i<matSize; i++) {
+                A(i,i) = 1;
+            }
+            for (int i=0; i<varLocs.size(); i++) {
+                for (int j=0; j<varLocs[i].size(); j++) {
+                    A(varLocs[i][j].first, varLocs[i][j].second) = x[i];
+                    A(varLocs[i][j].second, varLocs[i][j].first) = x[i];
+                }
+            }
+            for (int i=0; i<otherLocs.size(); i++) {
+                others[i] = 2.0*((double)rand()/(double)RAND_MAX)-1.0;
+                for (int j=0; j<otherLocs[i].size(); j++) {
+                    A(otherLocs[i][j].first, otherLocs[i][j].second) = others[i];
+                    A(otherLocs[i][j].second, otherLocs[i][j].first) = others[i];
+                }
+            }
+
+            std::cout << A << std::endl;
+
+            double obj = 0;
+            for (int i=0; i<numVars; i++) {
+                std::cout << varNamesInObj[i] << " = " << x[i] << "   " << objDir[i] << std::endl;
+                obj += objDir[i]*x[i];
+            }
+            std::cout << "Objective = " << obj << std::endl;
+
+            Eigen::MatrixXd L = A.llt().matrixL();
+            double score = 1000;
+            for (int i=0; i<L.rows(); i++) {
+                if (L(i,i) < score) {
+                    score = L(i,i);
+                }
+            }
+            std::cout << "starting score = " << score << std::endl;
+
+            // Get the min eigenvalues TODO cholesky isn't working so well
+            Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es(A);
+            std::cout << "Eigenvalues: " << std::endl;
+            std::cout << es.eigenvalues() << std::endl;
+
+            bool canBeMadePositive = false;
+
+            for (int k=0; k<10; k++) {
+
+                if (score > 0) {
+                    canBeMadePositive = true;
+                    break;
+                }
+
+                std::vector<double> othersNew = std::vector<double>(numOthers, 0);
+                for (int i=0; i<otherLocs.size(); i++) {
+                    othersNew[i] = others[i] + 0.1*(2.0*((double)rand()/(double)RAND_MAX)-1.0);
+                    for (int j=0; j<otherLocs[i].size(); j++) {
+                        A(otherLocs[i][j].first, otherLocs[i][j].second) = othersNew[i];
+                        A(otherLocs[i][j].second, otherLocs[i][j].first) = othersNew[i];
+                    }
+                }
+
+                L = A.llt().matrixL();
+                double newScore = 1000;
+                for (int i=0; i<L.rows(); i++) {
+                    if (L(i,i) < newScore) {
+                        newScore = L(i,i);
+                    }
+                }
+                std::cout << "new score = " << newScore << std::endl;
+
+                //std::vector<double> delta = std::vector<double>(numOthers, 0);
+                //for (int i=0; i<numOthers; i++) {
+                    //delta[i] = othersNew[i] - others[i];
+                //}
+
+                if (newScore > score) {
+                    score = newScore;
+                    others = othersNew;
+                }
+
+            }
+
+            if (canBeMadePositive) {
+                std::cout << "Can be made positive" << std::endl;
+                for (int i=0; i<numVars; i++) {
+                    x[i] += alpha*objDir[i];
+                    x[i] = std::max(-1.0, std::min(1.0, x[i]));
+                }
+            } else {
+                std::cout << "Can't be made positive" << std::endl;
+                for (int i=0; i<numVars; i++) {
+                    x[i] -= alpha*objDir[i];
+                    x[i] = std::max(-1.0, std::min(1.0, x[i]));
+                }
+                alpha /= 2;
+                std::cout << "Reducing alpha to " << alpha << std::endl;
+            }
+
+        }
 
         return 0;
 
