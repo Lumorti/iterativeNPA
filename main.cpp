@@ -2379,6 +2379,7 @@ int main(int argc, char* argv[]) {
         std::vector<double> objDir;
         std::vector<monomial> varNamesInObj;
         std::vector<std::vector<std::pair<int, int>>> varLocs;
+        std::vector<double> optVarVals;
         for (int i=0; i<objective.size(); i++) {
             std::vector<std::pair<int,int>> locs;
             for (int j=0; j<matSize; j++) {
@@ -2392,6 +2393,12 @@ int main(int argc, char* argv[]) {
             varLocs.push_back(locs);
             objDir.push_back(objective[i].first);
             varNamesInObj.push_back(objective[i].second);
+            for (int j=0; j<varNames.size(); j++) {
+                if (varNames[j] == objective[i].second) {
+                    optVarVals.push_back(varVals[j]);
+                    break;
+                }
+            }
         }
         int numVars = varLocs.size();
         std::cout << "Num vars: " << numVars << std::endl;
@@ -2421,12 +2428,13 @@ int main(int argc, char* argv[]) {
         // Start from a state
         std::vector<double> x = std::vector<double>(numVars, 0);
         for (int i=0; i<numVars; i++) {
-            x[i] = 2.0*((double)rand()/(double)RAND_MAX)-1.0;
+            //x[i] = 2.0*((double)rand()/(double)RAND_MAX)-1.0;
+            x[i] = optVarVals[i];
         }
         std::vector<double> others = std::vector<double>(numOthers, 0);
 
         double alpha = 0.1;
-        for (int iter=0; iter<10; iter++) {
+        for (int iter=0; iter<1; iter++) {
 
             std::cout << std::endl;
             std::cout << "iteration " << iter << std::endl;
@@ -2444,6 +2452,7 @@ int main(int argc, char* argv[]) {
             }
             for (int i=0; i<otherLocs.size(); i++) {
                 others[i] = 2.0*((double)rand()/(double)RAND_MAX)-1.0;
+                //others[i] = 0.0;
                 for (int j=0; j<otherLocs[i].size(); j++) {
                     A(otherLocs[i][j].first, otherLocs[i][j].second) = others[i];
                     A(otherLocs[i][j].second, otherLocs[i][j].first) = others[i];
@@ -2459,56 +2468,103 @@ int main(int argc, char* argv[]) {
             }
             std::cout << "Objective = " << obj << std::endl;
 
-            Eigen::MatrixXd L = A.llt().matrixL();
-            double score = 1000;
-            for (int i=0; i<L.rows(); i++) {
-                if (L(i,i) < score) {
-                    score = L(i,i);
-                }
-            }
-            std::cout << "starting score = " << score << std::endl;
+            // TODO
 
-            // Get the min eigenvalues TODO cholesky isn't working so well
+            // Get the min eigenvalues
             Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es(A);
-            std::cout << "Eigenvalues: " << std::endl;
-            std::cout << es.eigenvalues() << std::endl;
+            double score = es.eigenvalues()[0];
+            std::cout << "Starting score = " << score << std::endl;
 
             bool canBeMadePositive = false;
+            for (int k=0; k<20; k++) {
 
-            for (int k=0; k<10; k++) {
+                // Randomize the other variables
+                //std::vector<double> othersNew = std::vector<double>(numOthers, 0);
+                //for (int i=0; i<otherLocs.size(); i++) {
+                    ////othersNew[i] = others[i] + 0.1*(2.0*((double)rand()/(double)RAND_MAX)-1.0);
+                    //othersNew[i] = double(rand())/double(RAND_MAX);
+                    //for (int j=0; j<otherLocs[i].size(); j++) {
+                        //A(otherLocs[i][j].first, otherLocs[i][j].second) = othersNew[i];
+                        //A(otherLocs[i][j].second, otherLocs[i][j].first) = othersNew[i];
+                    //}
+                //}
 
-                if (score > 0) {
+                // Get the min eigenvalue
+                Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es(A);
+                double newScore1 = es.eigenvalues()[0];
+                std::cout << "New score  = " << newScore1 << std::endl;
+
+                // Stop if it's positive
+                if (newScore1 > 0) {
                     canBeMadePositive = true;
                     break;
                 }
 
-                std::vector<double> othersNew = std::vector<double>(numOthers, 0);
+                // Get the positive projection
+                Eigen::VectorXd eigens = es.eigenvalues();
+                for (int i=0; i<eigens.size(); i++) {
+                    if (eigens[i] < 0) {
+                        eigens[i] = 1;
+                    }
+                }
+                Eigen::MatrixXd ANew = es.eigenvectors()*eigens.asDiagonal()*es.eigenvectors().transpose();
+
+                // Get the new values
                 for (int i=0; i<otherLocs.size(); i++) {
-                    othersNew[i] = others[i] + 0.1*(2.0*((double)rand()/(double)RAND_MAX)-1.0);
+                    others[i] = 0;
                     for (int j=0; j<otherLocs[i].size(); j++) {
-                        A(otherLocs[i][j].first, otherLocs[i][j].second) = othersNew[i];
-                        A(otherLocs[i][j].second, otherLocs[i][j].first) = othersNew[i];
+                        others[i] += ANew(otherLocs[i][j].first, otherLocs[i][j].second);
+                    }
+                    others[i] /= otherLocs[i].size();
+                }
+
+                // Set the new values
+                for (int i=0; i<otherLocs.size(); i++) {
+                    for (int j=0; j<otherLocs[i].size(); j++) {
+                        A(otherLocs[i][j].first, otherLocs[i][j].second) = others[i];
+                        A(otherLocs[i][j].second, otherLocs[i][j].first) = others[i];
                     }
                 }
 
-                L = A.llt().matrixL();
-                double newScore = 1000;
-                for (int i=0; i<L.rows(); i++) {
-                    if (L(i,i) < newScore) {
-                        newScore = L(i,i);
-                    }
-                }
-                std::cout << "new score = " << newScore << std::endl;
+                // Pick a random element and change it
+                //int loc = rand() % numOthers;
+                //double prevVal = others[loc];
+                //others[loc] = 2.0*((double)rand()/(double)RAND_MAX)-1.0;
+                //for (int j=0; j<otherLocs[loc].size(); j++) {
+                    //A(otherLocs[loc][j].first, otherLocs[loc][j].second) = others[loc];
+                    //A(otherLocs[loc][j].second, otherLocs[loc][j].first) = others[loc];
+                //}
+
+                // Get the min eigenvalue
+                //Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es2(A);
+                //double newScore2 = es2.eigenvalues()[0];
+                //std::cout << "New score with flip = " << newScore2 << std::endl;
+
+                //// If it's worse, change it back
+                //if (newScore1 > newScore2) {
+                    //others[loc] = prevVal;
+                    //for (int j=0; j<otherLocs[loc].size(); j++) {
+                        //A(otherLocs[loc][j].first, otherLocs[loc][j].second) = others[loc];
+                        //A(otherLocs[loc][j].second, otherLocs[loc][j].first) = others[loc];
+                    //}
+                //}
 
                 //std::vector<double> delta = std::vector<double>(numOthers, 0);
                 //for (int i=0; i<numOthers; i++) {
                     //delta[i] = othersNew[i] - others[i];
                 //}
 
-                if (newScore > score) {
-                    score = newScore;
-                    others = othersNew;
-                }
+                //if (newScore > score) {
+                    //score = newScore;
+                    //others = othersNew;
+                    //for (int i=0; i<numOthers; i++) {
+                        //others[i] += delta[i];
+                    //} 
+                //} else {
+                    //for (int i=0; i<numOthers; i++) {
+                        //others[i] -= delta[i];
+                    //} 
+                //}
 
             }
 
