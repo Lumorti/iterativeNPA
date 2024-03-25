@@ -1171,7 +1171,7 @@ struct optimData {
 };
 
 // Given a monomial and an autodiff vector, evaluate the monomial
-autodiff::real evalCommutingMonom(const double& coeff, const monomial& monom, const autodiff::ArrayXreal& x, const int& numD) {
+autodiff::real evalMonom(const double& coeff, const monomial& monom, const autodiff::ArrayXreal& x, const int& numD) {
     autodiff::real term = coeff;
     if (monom.size() > 0) {
         for (int j=0; j<monom.size(); j++) {
@@ -1180,6 +1180,17 @@ autodiff::real evalCommutingMonom(const double& coeff, const monomial& monom, co
             } else {
                 term *= x(monom[j].second + numD);
             }
+        }
+    }
+    return term;
+}
+
+// Given a monomial and an autodiff vector, evaluate the monomial
+autodiff::real evalMonomNoD(const double& coeff, const monomial& monom, const autodiff::ArrayXreal& x) {
+    autodiff::real term = coeff;
+    if (monom.size() > 0) {
+        for (int j=0; j<monom.size(); j++) {
+            term *= x(monom[j].second);
         }
     }
     return term;
@@ -1218,21 +1229,68 @@ double evalCommutingMonomWithout(const double& coeff, const monomial& monom, con
 }
 
 
-autodiff::real optFunctionAD(const autodiff::ArrayXreal& x, const optimData* optDataRecast) {
+//autodiff::real optFunctionAD(const autodiff::ArrayXreal& x, const optimData* optDataRecast) {
+
+    //// The cost is a combination of the objective and the equality constraints
+    //autodiff::real cost = 0.0;
+    //for (int i=0; i<optDataRecast->objective.size(); i++) {
+        //cost -= evalCommutingMonom(optDataRecast->objective[i].first, optDataRecast->objective[i].second, x, optDataRecast->numD);
+    //}
+    //std::vector<double> equalityConVals(optDataRecast->equalityCons.size(), 0.0);
+    //for (int i=0; i<optDataRecast->equalityCons.size(); i++) {
+        //autodiff::real equalityConVal = 0.0;
+        //for (int j=0; j<optDataRecast->equalityCons[i].size(); j++) {
+            //equalityConVal += evalCommutingMonom(optDataRecast->equalityCons[i][j].first, optDataRecast->equalityCons[i][j].second, x, optDataRecast->numD);
+        //}
+        ////DEBUG
+        ////std::cout << "Equality constraint " << i << ": " << equalityConVals[i] << std::endl;
+        //cost += equalityConVal * equalityConVal * optDataRecast->penalty;
+    //}
+
+    //return cost;
+
+//}
+
+// Optim function with auto diff
+//double optFunction(const Eigen::VectorXd& x, Eigen::VectorXd* grad_out, void* optData) {
+
+    //// Recast this generic pointer into the correct format
+    //optimData* optDataRecast = reinterpret_cast<optimData*>(optData);
+
+    //// Using the types from autodiff
+    //autodiff::real u;
+    //autodiff::ArrayXreal xd = x.eval();
+
+    //// If requested, compute the gradient alongside the function using auto diff
+    //if (grad_out) {
+        //Eigen::VectorXd grad_tmp = autodiff::gradient(optFunctionAD, autodiff::wrt(xd), autodiff::at(xd, optDataRecast), u);
+        //*grad_out = grad_tmp;
+
+    //// Otherwise, just evaluate the function
+    //} else {
+        //u = optFunctionAD(xd, optDataRecast);
+    //}
+
+    //// Convert to double and return
+    //return u.val();
+
+//}
+
+// The autodiff part of the below function
+autodiff::real testFunctionAD(const autodiff::ArrayXreal& x, const optimData* optDataRecast) {
 
     // The cost is a combination of the objective and the equality constraints
     autodiff::real cost = 0.0;
     for (int i=0; i<optDataRecast->objective.size(); i++) {
-        cost -= evalCommutingMonom(optDataRecast->objective[i].first, optDataRecast->objective[i].second, x, optDataRecast->numD);
+        cost -= evalMonomNoD(optDataRecast->objective[i].first, optDataRecast->objective[i].second, x);
     }
-    std::vector<double> equalityConVals(optDataRecast->equalityCons.size(), 0.0);
+    //std::cout << "Objective: " << cost << std::endl; // DEBUG
     for (int i=0; i<optDataRecast->equalityCons.size(); i++) {
         autodiff::real equalityConVal = 0.0;
         for (int j=0; j<optDataRecast->equalityCons[i].size(); j++) {
-            equalityConVal += evalCommutingMonom(optDataRecast->equalityCons[i][j].first, optDataRecast->equalityCons[i][j].second, x, optDataRecast->numD);
+            equalityConVal += evalMonomNoD(optDataRecast->equalityCons[i][j].first, optDataRecast->equalityCons[i][j].second, x);
         }
-        //DEBUG
-        //std::cout << "Equality constraint " << i << ": " << equalityConVals[i] << std::endl;
+        //std::cout << "Equality constraint " << i << ": " << equalityConVal << std::endl; // DEBUG
         cost += equalityConVal * equalityConVal * optDataRecast->penalty;
     }
 
@@ -1241,7 +1299,7 @@ autodiff::real optFunctionAD(const autodiff::ArrayXreal& x, const optimData* opt
 }
 
 // Optim function with auto diff
-double optFunction(const Eigen::VectorXd& x, Eigen::VectorXd* grad_out, void* optData) {
+double testFunction(const Eigen::VectorXd& x, Eigen::VectorXd* grad_out, void* optData) {
 
     // Recast this generic pointer into the correct format
     optimData* optDataRecast = reinterpret_cast<optimData*>(optData);
@@ -1252,12 +1310,12 @@ double optFunction(const Eigen::VectorXd& x, Eigen::VectorXd* grad_out, void* op
 
     // If requested, compute the gradient alongside the function using auto diff
     if (grad_out) {
-        Eigen::VectorXd grad_tmp = autodiff::gradient(optFunctionAD, autodiff::wrt(xd), autodiff::at(xd, optDataRecast), u);
+        Eigen::VectorXd grad_tmp = autodiff::gradient(testFunctionAD, autodiff::wrt(xd), autodiff::at(xd, optDataRecast), u);
         *grad_out = grad_tmp;
 
     // Otherwise, just evaluate the function
     } else {
-        u = optFunctionAD(xd, optDataRecast);
+        u = testFunctionAD(xd, optDataRecast);
     }
 
     // Convert to double and return
@@ -1414,6 +1472,8 @@ int main(int argc, char* argv[]) {
     int numToSample = 1000;
     int verbosity = 1;
     int maxIters = 1000;
+    double startingPenalty = 1e5;
+    int numPenalties = 5;
     bool use01 = false;
     std::string seed = "";
     std::string problemName = "CHSH";
@@ -1506,10 +1566,22 @@ int main(int argc, char* argv[]) {
             std::cout << "  -i <num>        Iteration limit" << std::endl;
             std::cout << "  -n <num>        Number of moment matrices to sample" << std::endl;
             std::cout << "  -S <str>        Seed for the random number generator" << std::endl;
-            std::cout << "  -v <num>        Verbosity level" << std::endl;
+            std::cout << "  -v <num>        Set the verbosity level" << std::endl;
+            std::cout << "  -p <num>        Set the starting penalty" << std::endl;
+            std::cout << "  -P <num>        Set the number of penalties to use" << std::endl;
             std::cout << "  -t              Test the moment matrix" << std::endl;
             std::cout << "  -01             Use 0/1 output instead of -1/1" << std::endl;
             return 0;
+
+        // Set the starting penalty
+        } else if (argAsString == "-p") {
+            startingPenalty = std::stod(argv[i+1]);
+            i++;
+
+        // Set the number of penalty adjustments
+        } else if (argAsString == "-P") {
+            numPenalties = std::stoi(argv[i+1]);
+            i++;
 
         // Otherwise we don't know what this is
         } else {
@@ -1831,7 +1903,7 @@ int main(int argc, char* argv[]) {
             optData.penalty = 1e3;
             for (int i=0; i<10; i++) {
                 std::cout << "Optimising with " << numVars << " variables and penalty " << optData.penalty << std::endl;
-                bool success = optim::lbfgs(x, optFunction, &optData, settings);
+                //bool success = optim::lbfgs(x, optFunction, &optData, settings);
                 std::cout << "Result = " << gradFunction(x, &gradData, &optData) << std::endl;
                 optData.penalty *= 2;
             }
@@ -1976,7 +2048,7 @@ int main(int argc, char* argv[]) {
             std::cout << "Dual moment matrix: " << std::endl;
             std::cout << newMomentMat << std::endl << std::endl;
 
-            // TODO objective being the inner product with the primal solution
+            // Objective being the inner product with the primal solution
             newObjective = polynomial();
             for (int i=0; i<X.rows(); i++) {
                 for (int j=i; j<X.cols(); j++) {
@@ -2074,7 +2146,7 @@ int main(int argc, char* argv[]) {
 
         return 0;
 
-    // TODO check distance between sets
+    // Check distance between sets
     } else if (testing == 3) {
 
         std::vector<polynomialMatrix> momentMatricesL1 = generateAllMomentMatrices(objective, 1, -1, -1, use01);
@@ -2126,6 +2198,391 @@ int main(int argc, char* argv[]) {
                 //}
             //}
             //std::cout << std::endl;
+
+        }
+
+        return 0;
+
+    // Try optimizing Cholesky decomp 
+    } else if (testing == 4) {
+
+        // Run a normal opt first
+        std::vector<double> varVals;
+        std::vector<monomial> varNames;
+        double res = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, 0, varNames, varVals, use01);
+        std::cout << "Result from MOSEK: " << res << std::endl;
+        int matSize = momentMatrices[0].size();
+        int numVars = matSize*(matSize+1)/2;
+        std::cout << "Num vars: " << numVars << std::endl;
+        std::cout << "Moment matrix: " << std::endl;
+        std::cout << momentMatrices[0] << std::endl;
+
+        // Get the lists of indices which are equal in the moment matrix
+        std::vector<std::vector<std::pair<int, int>>> equalIndices;
+        for (int i=0; i<matSize; i++) {
+            for (int j=i+1; j<matSize; j++) {
+                std::vector<std::pair<int, int>> thisList = {{i, j}};
+                for (int k=i; k<matSize; k++) {
+                    for (int l=k+1; l<matSize; l++) {
+                        if (momentMatrices[0][i][j] == momentMatrices[0][k][l] && i != k && j != l) {
+                            thisList.push_back({k, l});
+                        }
+                    }
+                }
+                if (thisList.size() > 1) {
+                    equalIndices.push_back(thisList);
+                }
+            }
+        }
+
+        // Output this list
+        for (int i=0; i<equalIndices.size(); i++) {
+            std::cout << "Equal indices " << i << ": " << std::endl;
+            for (int j=0; j<equalIndices[i].size(); j++) {
+                std::cout << equalIndices[i][j].first << " " << equalIndices[i][j].second << std::endl;
+            }
+        }
+
+        // Get the generic LL^T matrix
+        polynomialMatrix LLT = polynomialMatrix(matSize, polynomialVector(matSize, polynomial()));
+        for (int i=0; i<matSize; i++) {
+            for (int j=i; j<matSize; j++) {
+
+                // Generate this element of the generic LLT matrix
+                polynomial thisLLT;
+                for (int k=0; k<=i; k++) {
+                    thisLLT.push_back(std::make_pair(1.0, stringToMonomial("<C" + std::to_string(cholLocToInd(k, i, matSize)) + "> " + "<C" + std::to_string(cholLocToInd(k, j, matSize)) + ">")));
+                }
+
+                // Set the element in the matrix
+                LLT[i][j] = thisLLT;
+
+            }
+        }
+        std::cout << "LLT: " << std::endl;
+        std::cout << LLT << std::endl;
+
+        // Get the objective in LLT space
+        polynomial newObj;
+        for (int i=0; i<objective.size(); i++) {
+            std::pair<int,int> loc;
+            for (int j=0; j<matSize; j++) {
+                for (int k=j; k<matSize; k++) {
+                    if (momentMatrices[0][j][k].size() == 1 && momentMatrices[0][j][k][0].second == objective[i].second) {
+                        loc = std::make_pair(j, k);
+                        break;
+                    }
+                }
+            }
+            for (int j=0; j<LLT[loc.first][loc.second].size(); j++) {
+                newObj.push_back(std::make_pair(objective[i].first, LLT[loc.first][loc.second][j].second));
+            }
+        }
+        std::cout << "New objective: " << std::endl;
+        std::cout << newObj << std::endl;
+
+        // Get the constraints in LLT space
+        std::vector<polynomial> equals;
+        for (int i=0; i<matSize; i++) {
+            polynomial newCon;
+            for (int k=0; k<LLT[i][i].size(); k++) {
+                newCon.push_back(std::make_pair(1.0, LLT[i][i][k].second));
+            }
+            newCon.push_back(std::make_pair(-1.0, monomial()));
+            equals.push_back(newCon);
+        }
+        for (int i=0; i<equalIndices.size(); i++) {
+            for (int j=0; j<equalIndices[i].size()-1; j++) {
+                polynomial newCon;
+                for (int k=0; k<LLT[equalIndices[i][j].first][equalIndices[i][j].second].size(); k++) {
+                    newCon.push_back(std::make_pair(1.0, LLT[equalIndices[i][j].first][equalIndices[i][j].second][k].second));
+                }
+                for (int k=0; k<LLT[equalIndices[i][j+1].first][equalIndices[i][j+1].second].size(); k++) {
+                    newCon.push_back(std::make_pair(-1.0, LLT[equalIndices[i][j+1].first][equalIndices[i][j+1].second][k].second));
+                }
+                equals.push_back(newCon);
+            }
+        }
+        std::cout << "New cons: " << std::endl;
+        for (int i=0; i<equals.size(); i++) {
+            std::cout << equals[i] << std::endl;
+        }
+
+        // Set up the optimisation
+        Eigen::VectorXd x = Eigen::VectorXd::Zero(numVars);
+        optimData optData;
+        optData.objective = newObj;
+        optData.equalityCons = equals;
+        optData.penalty = 1e8;
+
+        // Output all the variable values
+        std::cout << "Variable values: " << std::endl;
+        for (int i=0; i<varNames.size(); i++) {
+            std::cout << varNames[i] << ": " << varVals[i] << std::endl;
+        }
+
+        // Set the initial x to random values
+        for (int i=0; i<numVars; i++) {
+            x[i] = 2.0*((double)rand()/(double)RAND_MAX)-1.0;
+        }
+
+        // Check the initial cost
+        Eigen::VectorXd gradData = Eigen::VectorXd::Zero(numVars);
+        double startCost = testFunction(x, &gradData, &optData);
+        std::cout << "Starting cost: " << startCost << std::endl;
+
+        // Settings for the optimiser
+        optim::algo_settings_t settings;
+        settings.print_level = verbosity;
+        settings.iter_max = maxIters;
+        settings.rel_objfn_change_tol = 1e-10;
+        settings.gd_settings.method = 6;
+        settings.lbfgs_settings.par_M = 10;
+        settings.lbfgs_settings.wolfe_cons_1 = 1e-3;
+        settings.lbfgs_settings.wolfe_cons_2 = 0.8;
+
+        // Level 3 uses 500MB and takes about 2 seconds
+        // Level 4 uses 10GB
+
+        // Optimise
+        if (maxIters > 0) {
+            optData.penalty = startingPenalty;
+            for (int i=0; i<numPenalties; i++) {
+                std::cout << "Optimising with " << numVars << " variables and penalty " << optData.penalty << std::endl;
+                bool success = optim::lbfgs(x, testFunction, &optData, settings);
+                //bool success = optim::bfgs(x, testFunction, &optData, settings);
+                std::cout << "Result = " << testFunction(x, &gradData, &optData) << std::endl;
+                optData.penalty *= 2;
+            }
+        }   
+
+        return 0;
+
+    // Try only keep track of the variables in the objective and guessing the rest
+    } else if (testing == 5) {
+
+        // Run a normal opt first
+        std::vector<double> varVals;
+        std::vector<monomial> varNames;
+        double res = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, 0, varNames, varVals, use01);
+        std::cout << "Result from MOSEK: " << res << std::endl;
+        int matSize = momentMatrices[0].size();
+        std::cout << "Objective: " << objective << std::endl;
+        std::cout << "Moment matrix: " << std::endl;
+        std::cout << momentMatrices[0] << std::endl;
+        std::cout << "Var names and vals: " << std::endl;
+        for (int i=0; i<varNames.size(); i++) {
+            std::cout << varNames[i] << " = " << varVals[i] << std::endl;
+        }
+
+        // Get the location of each variable to optimize
+        std::vector<double> objDir;
+        std::vector<monomial> varNamesInObj;
+        std::vector<std::vector<std::pair<int, int>>> varLocs;
+        std::vector<double> optVarVals;
+        for (int i=0; i<objective.size(); i++) {
+            std::vector<std::pair<int,int>> locs;
+            for (int j=0; j<matSize; j++) {
+                for (int k=j; k<matSize; k++) {
+                    if (momentMatrices[0][j][k].size() == 1 && momentMatrices[0][j][k][0].second == objective[i].second) {
+                        locs.push_back(std::make_pair(j, k));
+                        break;
+                    }
+                }
+            }
+            varLocs.push_back(locs);
+            objDir.push_back(objective[i].first);
+            varNamesInObj.push_back(objective[i].second);
+            for (int j=0; j<varNames.size(); j++) {
+                if (varNames[j] == objective[i].second) {
+                    optVarVals.push_back(varVals[j]);
+                    break;
+                }
+            }
+        }
+        int numVars = varLocs.size();
+        std::cout << "Num vars: " << numVars << std::endl;
+
+        // Get the locations of each other variable
+        std::vector<std::vector<std::pair<int, int>>> otherLocs;
+        for (int i=0; i<varNames.size(); i++) {
+            if (std::find(varNamesInObj.begin(), varNamesInObj.end(), varNames[i]) != varNamesInObj.end()) {
+                continue;
+            }
+            if (varNames[i] == monomial()) {
+                continue;
+            }
+            std::vector<std::pair<int,int>> locs;
+            for (int j=0; j<matSize; j++) {
+                for (int k=j; k<matSize; k++) {
+                    if (momentMatrices[0][j][k].size() == 1 && momentMatrices[0][j][k][0].second == varNames[i]) {
+                        locs.push_back(std::make_pair(j, k));
+                    }
+                }
+            }
+            otherLocs.push_back(locs);
+        }
+        int numOthers = otherLocs.size();
+        std::cout << "Num others: " << numOthers << std::endl;
+        
+        // Start from a state
+        std::vector<double> x = std::vector<double>(numVars, 0);
+        for (int i=0; i<numVars; i++) {
+            //x[i] = 2.0*((double)rand()/(double)RAND_MAX)-1.0;
+            x[i] = optVarVals[i];
+        }
+        std::vector<double> others = std::vector<double>(numOthers, 0);
+
+        double alpha = 0.1;
+        for (int iter=0; iter<1; iter++) {
+
+            std::cout << std::endl;
+            std::cout << "iteration " << iter << std::endl;
+
+            // Check if the matrix with these vars can be made positive TODO
+            Eigen::MatrixXd A = Eigen::MatrixXd::Zero(matSize, matSize);
+            for (int i=0; i<matSize; i++) {
+                A(i,i) = 1;
+            }
+            for (int i=0; i<varLocs.size(); i++) {
+                for (int j=0; j<varLocs[i].size(); j++) {
+                    A(varLocs[i][j].first, varLocs[i][j].second) = x[i];
+                    A(varLocs[i][j].second, varLocs[i][j].first) = x[i];
+                }
+            }
+            for (int i=0; i<otherLocs.size(); i++) {
+                others[i] = 2.0*((double)rand()/(double)RAND_MAX)-1.0;
+                //others[i] = 0.0;
+                for (int j=0; j<otherLocs[i].size(); j++) {
+                    A(otherLocs[i][j].first, otherLocs[i][j].second) = others[i];
+                    A(otherLocs[i][j].second, otherLocs[i][j].first) = others[i];
+                }
+            }
+
+            std::cout << A << std::endl;
+
+            double obj = 0;
+            for (int i=0; i<numVars; i++) {
+                std::cout << varNamesInObj[i] << " = " << x[i] << "   " << objDir[i] << std::endl;
+                obj += objDir[i]*x[i];
+            }
+            std::cout << "Objective = " << obj << std::endl;
+
+            // TODO
+
+            // Get the min eigenvalues
+            Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es(A);
+            double score = es.eigenvalues()[0];
+            std::cout << "Starting score = " << score << std::endl;
+
+            bool canBeMadePositive = false;
+            for (int k=0; k<20; k++) {
+
+                // Randomize the other variables
+                //std::vector<double> othersNew = std::vector<double>(numOthers, 0);
+                //for (int i=0; i<otherLocs.size(); i++) {
+                    ////othersNew[i] = others[i] + 0.1*(2.0*((double)rand()/(double)RAND_MAX)-1.0);
+                    //othersNew[i] = double(rand())/double(RAND_MAX);
+                    //for (int j=0; j<otherLocs[i].size(); j++) {
+                        //A(otherLocs[i][j].first, otherLocs[i][j].second) = othersNew[i];
+                        //A(otherLocs[i][j].second, otherLocs[i][j].first) = othersNew[i];
+                    //}
+                //}
+
+                // Get the min eigenvalue
+                Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es(A);
+                double newScore1 = es.eigenvalues()[0];
+                std::cout << "New score  = " << newScore1 << std::endl;
+
+                // Stop if it's positive
+                if (newScore1 > 0) {
+                    canBeMadePositive = true;
+                    break;
+                }
+
+                // Get the positive projection
+                Eigen::VectorXd eigens = es.eigenvalues();
+                for (int i=0; i<eigens.size(); i++) {
+                    if (eigens[i] < 0) {
+                        eigens[i] = 1;
+                    }
+                }
+                Eigen::MatrixXd ANew = es.eigenvectors()*eigens.asDiagonal()*es.eigenvectors().transpose();
+
+                // Get the new values
+                for (int i=0; i<otherLocs.size(); i++) {
+                    others[i] = 0;
+                    for (int j=0; j<otherLocs[i].size(); j++) {
+                        others[i] += ANew(otherLocs[i][j].first, otherLocs[i][j].second);
+                    }
+                    others[i] /= otherLocs[i].size();
+                }
+
+                // Set the new values
+                for (int i=0; i<otherLocs.size(); i++) {
+                    for (int j=0; j<otherLocs[i].size(); j++) {
+                        A(otherLocs[i][j].first, otherLocs[i][j].second) = others[i];
+                        A(otherLocs[i][j].second, otherLocs[i][j].first) = others[i];
+                    }
+                }
+
+                // Pick a random element and change it
+                //int loc = rand() % numOthers;
+                //double prevVal = others[loc];
+                //others[loc] = 2.0*((double)rand()/(double)RAND_MAX)-1.0;
+                //for (int j=0; j<otherLocs[loc].size(); j++) {
+                    //A(otherLocs[loc][j].first, otherLocs[loc][j].second) = others[loc];
+                    //A(otherLocs[loc][j].second, otherLocs[loc][j].first) = others[loc];
+                //}
+
+                // Get the min eigenvalue
+                //Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es2(A);
+                //double newScore2 = es2.eigenvalues()[0];
+                //std::cout << "New score with flip = " << newScore2 << std::endl;
+
+                //// If it's worse, change it back
+                //if (newScore1 > newScore2) {
+                    //others[loc] = prevVal;
+                    //for (int j=0; j<otherLocs[loc].size(); j++) {
+                        //A(otherLocs[loc][j].first, otherLocs[loc][j].second) = others[loc];
+                        //A(otherLocs[loc][j].second, otherLocs[loc][j].first) = others[loc];
+                    //}
+                //}
+
+                //std::vector<double> delta = std::vector<double>(numOthers, 0);
+                //for (int i=0; i<numOthers; i++) {
+                    //delta[i] = othersNew[i] - others[i];
+                //}
+
+                //if (newScore > score) {
+                    //score = newScore;
+                    //others = othersNew;
+                    //for (int i=0; i<numOthers; i++) {
+                        //others[i] += delta[i];
+                    //} 
+                //} else {
+                    //for (int i=0; i<numOthers; i++) {
+                        //others[i] -= delta[i];
+                    //} 
+                //}
+
+            }
+
+            if (canBeMadePositive) {
+                std::cout << "Can be made positive" << std::endl;
+                for (int i=0; i<numVars; i++) {
+                    x[i] += alpha*objDir[i];
+                    x[i] = std::max(-1.0, std::min(1.0, x[i]));
+                }
+            } else {
+                std::cout << "Can't be made positive" << std::endl;
+                for (int i=0; i<numVars; i++) {
+                    x[i] -= alpha*objDir[i];
+                    x[i] = std::max(-1.0, std::min(1.0, x[i]));
+                }
+                alpha /= 2;
+                std::cout << "Reducing alpha to " << alpha << std::endl;
+            }
 
         }
 

@@ -6,6 +6,52 @@ import random
 import math
 import itertools
 
+X = cp.Variable((5,5), symmetric=True)
+A1 = cp.Variable()
+A2 = cp.Variable()
+B1 = cp.Variable()
+B2 = cp.Variable()
+A1B1 = cp.Variable()
+A1B2 = cp.Variable()
+A2B1 = cp.Variable()
+A2B2 = cp.Variable()
+A1A2 = cp.Variable()
+B1B2 = cp.Variable()
+cons = [
+    X[0,0] == 1,
+    X[1,1] == 1,
+    X[2,2] == 1,
+    X[3,3] == 1,
+    X[4,4] == 1,
+    X[0,1] == A1,
+    X[0,2] == A2,
+    X[0,3] == B1,
+    X[0,4] == B2,
+    X[1,2] == A1A2,
+    X[1,3] == A1B1,
+    X[1,4] == A1B2,
+    X[2,3] == A2B1,
+    X[2,4] == A2B2,
+    X[3,4] == B1B2,
+    # c == math.sqrt(3)/2,
+    # x == 1.0/(2*math.sqrt(2-math.sqrt(3))),
+    # y == 1.0/(2*math.sqrt(2-math.sqrt(3))),
+    # y == 1.0,
+    X >> 0
+]
+prob = cp.Problem(cp.Maximize(A1B1+A1B2+A2B1-A2B2), cons)
+prob.solve(solver=cp.MOSEK, mosek_params={"MSK_IPAR_NUM_THREADS": 1})
+np.set_printoptions(edgeitems=30, linewidth=100000, 
+    formatter=dict(float=lambda x: "%.3f" % x))
+print(prob.status)
+print(prob.value)
+print(X.value)
+asNum = np.array(X.value)
+LL = np.linalg.cholesky(asNum + 1e-6*np.eye(5))
+print(LL)
+print(LL@LL.T)
+exit()
+
 X = cp.Variable((4,4), symmetric=True)
 x = cp.Variable()
 y = cp.Variable()
