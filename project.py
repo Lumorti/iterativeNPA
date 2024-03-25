@@ -27,12 +27,12 @@ thingsToDraw = {
         "cone"        : {"draw": False, "regen": False, "check": False},
         "optimized"   : {"draw": False,  "regen": False,  "check": False},
         "test"        : {"draw": True,  "regen": True,  "check": True},
-        "point"       : {"draw": True,  "regen": True,  "check": False},
+        "point"       : {"draw": False,  "regen": False,  "check": False},
     }
 # fourthVal = 0.0
 # fourthVal = 0.25
-# fourthVal = 0.5
-fourthVal = 0.5862068965517242
+fourthVal = 0.5
+# fourthVal = 0.5862068965517242
 # fourthVal = 0.75
 # fourthVal = 1.0
 pointsPer = 120
@@ -223,49 +223,62 @@ def Sqrt(x):
 def checkPointTest(x, y, z):
 
     a = fourthVal
-    b = 3*(1-a)
+    # b = 3*(1-a)
 
     x2 = x**2
     y2 = y**2
     z2 = z**2
     a2 = a**2
-    x4 = x**4
-    y4 = y**4
-    z4 = z**4
-    a4 = a**4
-    x6 = x**6
-    y6 = y**6
-    z6 = z**6
-    a6 = a**6
-    m = x + y + z + a
-    s1 = x2 + y2 + z2 + a2
-    s2 = x2*y2 + z2*(x2 + y2) + a2*(x2 + y2 + z2)
-    s3 = x2*y2*z2 + a2*(x2*y2 + x2*z2 + y2*z2)
-    s4 = x2*y2*z2*a2
-    p1 = x4 + y4 + z4 + a4
-    rt3o2 = math.sqrt(3.0)/2.0
+    # x4 = x**4
+    # y4 = y**4
+    # z4 = z**4
+    # a4 = a**4
+    # x6 = x**6
+    # y6 = y**6
+    # z6 = z**6
+    # a6 = a**6
+    # m = x + y + z + a
+    # s1 = x2 + y2 + z2 + a2
+    # s2 = x2*y2 + z2*(x2 + y2) + a2*(x2 + y2 + z2)
+    # s3 = x2*y2*z2 + a2*(x2*y2 + x2*z2 + y2*z2)
+    # s4 = x2*y2*z2*a2
+    # p1 = x4 + y4 + z4 + a4
+    # rt3o2 = math.sqrt(3.0)/2.0
 
-    # TODO 
-    if abs(x) > 1 or abs(y) > 1 or abs(z) > 1:
-        return False
+    # if abs(x) > 1 or abs(y) > 1 or abs(z) > 1:
+        # return False
 
     # return (1-y2-(x*z-math.sqrt(1-x2-z2+x2*z2))**2 >= 0) or (1-y2-(x*z+math.sqrt(1-x2-z2+x2*z2))**2 >= 0)
 
-    a1Func = 2-x2-y2-z2-a2+2*x*y*z*a
-    nonPM = x2-y2+z2-2*x2*z2 - a1Func
-    pm = 2*x*z*math.sqrt(1-x2-z2+x2*z2)
+    # a1Func = 2-x2-y2-z2-a2+2*x*y*z*a
+    # nonPM = x2-y2+z2-2*x2*z2 - a1Func
+    # pm = 2*x*z*math.sqrt(1-x2-z2+x2*z2)
     # return a1Func + (1-a2)*(nonPM + pm) > 0 or a1Func*a2 + (1-a2)*(nonPM - pm) > 0
 
-    if a2*y2-a2-y2+1 < 0:
-        return False
-    if x2*z2-x2-z2+1 < 0:
-        return False
-    if 1-(x*z - math.sqrt(1-x2-z2+x2*z2))**2 < 0:
-        return False
-    if 1-(a*y - math.sqrt(1-a2-y2+a2*y2))**2 < 0:
-        return False
+    # if 1+2*x*y*z-x2-y2-z2 >= 0:
+        # return True
+    # if 1 - x2 + y2 - 2*y2 + 2*x*y*z - 2*x*math.sqrt(1 - a2 - y2 + a2*y2)*z - z2 >= 0:
+        # return True
+
+    # TODO 
+    if 1+a2*y2-a2-y2 >= 0 and a2 + y2 - 2*a2*y2 + 2*a*y*math.sqrt(1 - a2 - y2 + a2*y2) >= 0 and a2 - x2 + y2 - 2*a2*y2 + 2*a*y*math.sqrt(1 - a2 - y2 + a2*y2) + 2*a*x*y*z - 2*x*math.sqrt(1 - a2 - y2 + a2*y2)*z - z2 >= 0:
+        return True
+    if 1+a2*y2-a2-y2 >= 0 and a2 + y2 - 2*a2*y2 - 2*a*y*math.sqrt(1 - a2 - y2 + a2*y2) >= 0 and a2 - x2 + y2 - 2*a2*y2 - 2*a*y*math.sqrt(1 - a2 - y2 + a2*y2) + 2*a*x*y*z + 2*x*math.sqrt(1 - a2 - y2 + a2*y2)*z - z2 >= 0:
+        return True
+
+    # if 1+x2*z2-x2-z2 >= 0 and x2 + z2 - 2*x2*z2 + 2*x*z*Sqrt(1 - x2 - z2 + x2*z2) >= 0:
+        # return True
+
+    # if a2*y2-a2-y2+1 < 0:
+        # return False
+    # if x2*z2-x2-z2+1 < 0:
+        # return False
+    # if 1-(x*z - math.sqrt(1-x2-z2+x2*z2))**2 < 0:
+        # return False
+    # if 1-(a*y - math.sqrt(1-a2-y2+a2*y2))**2 < 0:
+        # return False
     # return a2+y2-x2-z2-2*a2*y2 + 2*x*y*z*a + 2*x*z*math.sqrt(1-a2-y2+a2*y2) - 2*a*y*math.sqrt(1-a2-y2+a2*y2) > 0
-    return a2+y2-x2-z2-2*a2*y2 + 2*x*y*z*a - 2*x*z*math.sqrt(1-a2-y2+a2*y2) + 2*a*y*math.sqrt(1-a2-y2+a2*y2) > 0 or a2+y2-x2-z2-2*a2*y2 + 2*x*y*z*a + 2*x*z*math.sqrt(1-a2-y2+a2*y2) - 2*a*y*math.sqrt(1-a2-y2+a2*y2) > 0
+    # return a2+y2-x2-z2-2*a2*y2 + 2*x*y*z*a - 2*x*z*math.sqrt(1-a2-y2+a2*y2) + 2*a*y*math.sqrt(1-a2-y2+a2*y2) > 0 or a2+y2-x2-z2-2*a2*y2 + 2*x*y*z*a + 2*x*z*math.sqrt(1-a2-y2+a2*y2) - 2*a*y*math.sqrt(1-a2-y2+a2*y2) > 0
 
     return False
 
