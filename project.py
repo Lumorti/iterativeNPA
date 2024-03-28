@@ -39,7 +39,7 @@ pointsPer = 120
 pointsPerCheck = 30
 limMin = -1.05
 limMax = 1.05
-threads = 8
+threads = 1
 thresh = 0.30
 tol = 0.01
 
@@ -261,13 +261,26 @@ def checkPointTest(x, y, z):
         # return True
 
     # TODO 
-    if 1+a2*y2-a2-y2 >= 0 and a2 + y2 - 2*a2*y2 + 2*a*y*math.sqrt(1 - a2 - y2 + a2*y2) >= 0 and a2 - x2 + y2 - 2*a2*y2 + 2*a*y*math.sqrt(1 - a2 - y2 + a2*y2) + 2*a*x*y*z - 2*x*math.sqrt(1 - a2 - y2 + a2*y2)*z - z2 >= 0:
-        return True
-    if 1+a2*y2-a2-y2 >= 0 and a2 + y2 - 2*a2*y2 - 2*a*y*math.sqrt(1 - a2 - y2 + a2*y2) >= 0 and a2 - x2 + y2 - 2*a2*y2 - 2*a*y*math.sqrt(1 - a2 - y2 + a2*y2) + 2*a*x*y*z + 2*x*math.sqrt(1 - a2 - y2 + a2*y2)*z - z2 >= 0:
-        return True
+    zeroThresh = -1e-8
+    con1 = 1.0 + a2*y2 - a2 - y2
+    if con1 >= zeroThresh:
+        con2 = a2 + y2 - 2.0*a2*y2 + 2.0*a*y*math.sqrt(1 - a2 - y2 + a2*y2)
+        con3 = a2 - x2 + y2 - 2.0*a2*y2 + 2.0*a*y*math.sqrt(1 - a2 - y2 + a2*y2) + 2*a*x*y*z - 2*x*math.sqrt(1 - a2 - y2 + a2*y2)*z - z2 
+        con4 = a2 + y2 - 2.0*a2*y2 - 2.0*a*y*math.sqrt(1 - a2 - y2 + a2*y2)
+        con5 = a2 - x2 + y2 - 2.0*a2*y2 - 2.0*a*y*math.sqrt(1 - a2 - y2 + a2*y2) + 2*a*x*y*z + 2*x*math.sqrt(1 - a2 - y2 + a2*y2)*z - z2 
+        if con2 >= zeroThresh and con3 >= zeroThresh:
+            return True
+        if con4 >= zeroThresh and con5 >= zeroThresh:
+            return True
 
-    # if 1+x2*z2-x2-z2 >= 0 and x2 + z2 - 2*x2*z2 + 2*x*z*Sqrt(1 - x2 - z2 + x2*z2) >= 0:
-        # return True
+    if 1+a2*y2-a2-y2 >= 0 and 1+x2*z2-x2-z2 >= 0 and x2 + z2 - 2*x2*z2 + 2*x*z*math.sqrt(1 - x2 - z2 + x2*z2) >= 0:
+        b = x*z + math.sqrt(1 - x2 - z2 + x2*z2)
+        if abs(b-1) > zeroThresh and abs(b+1) > zeroThresh:
+            return True
+    if 1+x2*z2-x2-z2 >= 0 and x2 + z2 - 2*x2*z2 - 2*x*z*math.sqrt(1 - x2 - z2 + x2*z2) >= 0:
+        b = x*z - math.sqrt(1 - x2 - z2 + x2*z2)
+        if abs(b-1) > zeroThresh and abs(b+1) > zeroThresh:
+            return True
 
     # if a2*y2-a2-y2+1 < 0:
         # return False
