@@ -19,6 +19,7 @@ random.seed(0)
 
 # Which things to draw, regenerate, and check
 onlyCheckEdge = True
+pointCloud = True
 thingsToDraw = {
         "box"         : {"draw": False,  "regen": False, "check": False},
         "data"        : {"draw": True,  "regen": False, "check": True},
@@ -29,17 +30,17 @@ thingsToDraw = {
         "test"        : {"draw": True,  "regen": True,  "check": True},
         "point"       : {"draw": False,  "regen": False,  "check": False},
     }
-# fourthVal = 0.0
+fourthVal = 0.0
 # fourthVal = 0.25
-fourthVal = 0.5
+# fourthVal = 0.5
 # fourthVal = 0.5862068965517242
 # fourthVal = 0.75
 # fourthVal = 1.0
-pointsPer = 120
+pointsPer = 30
 pointsPerCheck = 30
 limMin = -1.05
 limMax = 1.05
-threads = 1
+threads = 8
 thresh = 0.30
 tol = 0.01
 
@@ -223,64 +224,40 @@ def Sqrt(x):
 def checkPointTest(x, y, z):
 
     a = fourthVal
-    # b = 3*(1-a)
-
     x2 = x**2
     y2 = y**2
     z2 = z**2
     a2 = a**2
-    # x4 = x**4
-    # y4 = y**4
-    # z4 = z**4
-    # a4 = a**4
-    # x6 = x**6
-    # y6 = y**6
-    # z6 = z**6
-    # a6 = a**6
-    # m = x + y + z + a
-    # s1 = x2 + y2 + z2 + a2
-    # s2 = x2*y2 + z2*(x2 + y2) + a2*(x2 + y2 + z2)
-    # s3 = x2*y2*z2 + a2*(x2*y2 + x2*z2 + y2*z2)
-    # s4 = x2*y2*z2*a2
-    # p1 = x4 + y4 + z4 + a4
-    # rt3o2 = math.sqrt(3.0)/2.0
-
-    # if abs(x) > 1 or abs(y) > 1 or abs(z) > 1:
-        # return False
-
-    # return (1-y2-(x*z-math.sqrt(1-x2-z2+x2*z2))**2 >= 0) or (1-y2-(x*z+math.sqrt(1-x2-z2+x2*z2))**2 >= 0)
-
-    # a1Func = 2-x2-y2-z2-a2+2*x*y*z*a
-    # nonPM = x2-y2+z2-2*x2*z2 - a1Func
-    # pm = 2*x*z*math.sqrt(1-x2-z2+x2*z2)
-    # return a1Func + (1-a2)*(nonPM + pm) > 0 or a1Func*a2 + (1-a2)*(nonPM - pm) > 0
-
-    # if 1+2*x*y*z-x2-y2-z2 >= 0:
-        # return True
-    # if 1 - x2 + y2 - 2*y2 + 2*x*y*z - 2*x*math.sqrt(1 - a2 - y2 + a2*y2)*z - z2 >= 0:
-        # return True
 
     # TODO 
     zeroThresh = -1e-8
     con1 = 1.0 + a2*y2 - a2 - y2
     if con1 >= zeroThresh:
         con2 = a2 + y2 - 2.0*a2*y2 + 2.0*a*y*math.sqrt(1 - a2 - y2 + a2*y2)
+        con2n = a2 + y2 - 2.0*a2*y2 - 2.0*a*y*math.sqrt(1 - a2 - y2 + a2*y2)
         con3 = a2 - x2 + y2 - 2.0*a2*y2 + 2.0*a*y*math.sqrt(1 - a2 - y2 + a2*y2) + 2*a*x*y*z - 2*x*math.sqrt(1 - a2 - y2 + a2*y2)*z - z2 
-        con4 = a2 + y2 - 2.0*a2*y2 - 2.0*a*y*math.sqrt(1 - a2 - y2 + a2*y2)
-        con5 = a2 - x2 + y2 - 2.0*a2*y2 - 2.0*a*y*math.sqrt(1 - a2 - y2 + a2*y2) + 2*a*x*y*z + 2*x*math.sqrt(1 - a2 - y2 + a2*y2)*z - z2 
-        if con2 >= zeroThresh and con3 >= zeroThresh:
+        con3n = a2 - x2 + y2 - 2.0*a2*y2 - 2.0*a*y*math.sqrt(1 - a2 - y2 + a2*y2) + 2*a*x*y*z + 2*x*math.sqrt(1 - a2 - y2 + a2*y2)*z - z2 
+        con4 = abs(1 + a*y - math.sqrt(1 - a2 - y2 + a2*y2))
+        con4n = abs(-1 + a*y - math.sqrt(1 - a2 - y2 + a2*y2))
+        # if con2 >= zeroThresh and con3 >= zeroThresh:
+            # return True
+        # if con2n >= zeroThresh and con3n >= zeroThresh:
+            # return True
+        # if con2 >= zeroThresh and con2n >= zeroThresh and abs(con4) >= zeroThresh and abs(con4n) >= zeroThresh:
+            # return True
+        if con3 >= zeroThresh:
             return True
-        if con4 >= zeroThresh and con5 >= zeroThresh:
+        if con3n >= zeroThresh:
             return True
 
-    if 1+a2*y2-a2-y2 >= 0 and 1+x2*z2-x2-z2 >= 0 and x2 + z2 - 2*x2*z2 + 2*x*z*math.sqrt(1 - x2 - z2 + x2*z2) >= 0:
-        b = x*z + math.sqrt(1 - x2 - z2 + x2*z2)
-        if abs(b-1) > zeroThresh and abs(b+1) > zeroThresh:
-            return True
-    if 1+x2*z2-x2-z2 >= 0 and x2 + z2 - 2*x2*z2 - 2*x*z*math.sqrt(1 - x2 - z2 + x2*z2) >= 0:
-        b = x*z - math.sqrt(1 - x2 - z2 + x2*z2)
-        if abs(b-1) > zeroThresh and abs(b+1) > zeroThresh:
-            return True
+    # if 1+a2*y2-a2-y2 >= 0 and 1+x2*z2-x2-z2 >= 0 and x2 + z2 - 2*x2*z2 + 2*x*z*math.sqrt(1 - x2 - z2 + x2*z2) >= 0:
+        # b = x*z + math.sqrt(1 - x2 - z2 + x2*z2)
+        # if abs(b-1) > zeroThresh and abs(b+1) > zeroThresh:
+            # return True
+    # if 1+x2*z2-x2-z2 >= 0 and x2 + z2 - 2*x2*z2 - 2*x*z*math.sqrt(1 - x2 - z2 + x2*z2) >= 0:
+        # b = x*z - math.sqrt(1 - x2 - z2 + x2*z2)
+        # if abs(b-1) > zeroThresh and abs(b+1) > zeroThresh:
+            # return True
 
     # if a2*y2-a2-y2+1 < 0:
         # return False
@@ -539,8 +516,9 @@ for name, thingToDraw in thingsToDraw.items():
                 points = pool.map(getPointsUniformSphube, range(threads))
                 points = reduce(concat, points)
                 points = points.reshape(-1, 3)
-                hull = ConvexHull(points)
-                points = points[hull.vertices,:]
+                if not pointCloud:
+                    hull = ConvexHull(points)
+                    points = points[hull.vertices,:]
                 writePoints(points, "data/pointsSphube.csv")
         else:
             points = readPoints("data/pointsSphube.csv")
@@ -555,8 +533,9 @@ for name, thingToDraw in thingsToDraw.items():
                 points = pool.map(getPointsUniformCone, range(threads))
                 points = reduce(concat, points)
                 points = points.reshape(-1, 3)
-                hull = ConvexHull(points)
-                points = points[hull.vertices,:]
+                if not pointCloud:
+                    hull = ConvexHull(points)
+                    points = points[hull.vertices,:]
                 writePoints(points, "data/pointsCone.csv")
         else:
             points = readPoints("data/pointsCone.csv")
@@ -571,8 +550,9 @@ for name, thingToDraw in thingsToDraw.items():
                 points = pool.map(getPointsUniformTest, range(threads))
                 points = reduce(concat, points)
                 points = points.reshape(-1, 3)
-                hull = ConvexHull(points)
-                points = points[hull.vertices,:]
+                if not pointCloud:
+                    hull = ConvexHull(points)
+                    points = points[hull.vertices,:]
                 writePoints(points, "data/pointsTest.csv")
         else:
             points = readPoints("data/pointsTest.csv")
@@ -610,8 +590,9 @@ for name, thingToDraw in thingsToDraw.items():
                     points = pool.map(getPointsUniform, range(threads))
                     points = reduce(concat, points)
                     points = points.reshape(-1, 3)
-                    hull = ConvexHull(points)
-                    points = points[hull.vertices,:]
+                    if not pointCloud:
+                        hull = ConvexHull(points)
+                        points = points[hull.vertices,:]
                     writePoints(points, "data/points" + str(fourthVal) + ".csv")
         else:
             points = readPoints("data/points" + str(fourthVal) + ".csv")
@@ -626,8 +607,9 @@ for name, thingToDraw in thingsToDraw.items():
                 points = pool.map(getPointsUniformPartial, range(threads))
                 points = reduce(concat, points)
                 points = points.reshape(-1, 3)
-                hull = ConvexHull(points)
-                points = points[hull.vertices,:]
+                if not pointCloud:
+                    hull = ConvexHull(points)
+                    points = points[hull.vertices,:]
                 writePoints(points, "data/pointsPartial" + str(fourthVal) + ".csv")
         else:
             points = readPoints("data/pointsPartial" + str(fourthVal) + ".csv")
@@ -763,16 +745,20 @@ if len(pointArray) > 0:
     ax.set_aspect('auto')
     ax.set_proj_type("ortho")
     styles = ["r-", "b-", "g-", "y-", "c-", "m-", "k-"]
+    stylesPoints = ["ro", "bo", "go", "yo", "co", "mo", "ko"]
     for i, points in enumerate(pointArray):
-        style = styles[i]
-        if points.shape[0] > 1:
+        if pointCloud:
+            ax.scatter(points[:, 0], points[:, 1], points[:, 2], stylesPoints[i])
+            ax.plot([], [], stylesPoints[i], label=nameArray[i])
+        elif points.shape[0] > 1:
             hull = ConvexHull(points[:,:])
             for s in hull.simplices:
                 s = np.append(s, s[0])
-                ax.plot(points[s, 0], points[s, 1], points[s, 2], style)
+                ax.plot(points[s, 0], points[s, 1], points[s, 2], styles[i])
+            ax.plot([], [], styles[i], label=nameArray[i])
         else:
-            ax.scatter(points[0,0], points[0,1], points[0,2], style)
-        ax.plot([], [], style, label=nameArray[i])
+            ax.scatter(points[0,0], points[0,1], points[0,2], stylesPoints[i])
+            ax.plot([], [], stylesPoints[i], label=nameArray[i])
     fig.tight_layout()
     fig.legend()
     plt.show()
