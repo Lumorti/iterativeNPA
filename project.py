@@ -1,3 +1,105 @@
+import sympy as sp
+from sympy.calculus.util import continuous_domain
+from sympy.printing import cxxcode
+from sympy import mathematica_code
+a, b, c, x, y, z = sp.symbols("a b c x y z", real = True)
+M = sp.Matrix([[ 1, b, x, y ],
+               [ b, 1, z, a ],
+               [ x, z, 1, c ],
+               [ y, a, c, 1 ]])
+M4 = M.det()
+M3 = M.extract([0,1,2], [0,1,2]).det()
+M2 = M.extract([0,1], [0,1]).det()
+probList = [[M4, M3, M2]]
+print("------------------------")
+print("Original problem")
+print("------------------------")
+print(M4, ">= 0")
+print(M3, ">= 0")
+print(M2, ">= 0")
+
+def projVar(probList, varToRemove):
+    newProbList = []
+
+    for prob in probList:
+
+        # Find an equation which contains this variable
+        for eqn in prob:
+            if eqn.has(varToRemove):
+
+                # Imagine that this is zero rather than greater than zero
+                toReplace = sp.solve(eqn, varToRemove)
+
+                # For each solutions, generate the new equation set
+                for newVal in toReplace:
+                    newProb = []
+                    print("considering ", varToRemove, "->", newVal)
+
+                    # Replace this value in all the equations
+                    for eqn2 in prob:
+                        if eqn2 != eqn:
+                            newEqn = eqn2.subs(varToRemove, newVal)
+                            # newEqn = sp.simplify(sp.expand(newEqn))
+                            newProb.append(newEqn)
+
+                    # Get the domain (bit inside the square root) of the solution
+                    asString = str(newVal)
+                    currentNewEqn = ""
+                    for i in range(len(asString)):
+                        if asString[i:i+4] == "sqrt":
+                            bracketLevel = 1
+                            for j in range(i+5, len(asString)):
+                                if asString[j] == "(":
+                                    bracketLevel += 1
+                                elif asString[j] == ")":
+                                    bracketLevel -= 1
+                                if bracketLevel == 0:
+                                    break
+                                currentNewEqn += asString[j]
+                    if len(currentNewEqn.strip()) > 0:
+                        newProb.append(sp.sympify(currentNewEqn, locals={"x": x, "y": y, "z": z, "a": a, "b": b, "c": c}))
+
+                    newProbList.append(newProb)
+
+        return newProbList
+
+# Remove c
+probList = projVar(probList, b)
+for prob in probList:
+    print("------------------------")
+    print("Possible new problem (removed c)")
+    print("------------------------")
+    for eqn in prob:
+        print(eqn, ">= 0")
+
+# Remove b
+probList = projVar(probList, c)
+for prob in probList:
+    print("------------------------")
+    print("Possible new problem (removed b)")
+    print("------------------------")
+    for eqn in prob:
+        print(eqn, ">= 0")
+
+# Remove duplicates
+probListNew = []
+for prob in probList:
+    if prob not in probListNew:
+        probListNew.append(prob)
+probList = probListNew
+
+# Checking a=0
+for prob in probList:
+    print("------------------------")
+    print("Possible new problem (removed a)")
+    print("------------------------")
+    for eqn in prob:
+        eqn = eqn.subs(a, 0)
+        # print(sp.expand(eqn), ">= 0")
+        print(mathematica_code(eqn).replace("*",""), ">= 0")
+
+exit()
+
 import numpy as np
 import matplotlib.pyplot as plt
 import cvxpy as cp

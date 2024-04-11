@@ -75,13 +75,16 @@ cons = [
     # c == math.sqrt(3)/2,
     # x == 1.0/(2*math.sqrt(2-math.sqrt(3))),
     # y == 1.0/(2*math.sqrt(2-math.sqrt(3))),
-    a == 0.5,
-    x == 1.0,
-    y == 1.0,
-    z == 1.0,
+    # a == 0.5,
+    # x == 1.0,
+    # y == 1.0,
+    # z == 1.0,
     X >> 0
 ]
-prob = cp.Problem(cp.Maximize(x+y+z+a), cons)
+# prob = cp.Problem(cp.Maximize(x+y+z+a), cons)
+import random
+# generate a random objective function
+prob = cp.Problem(cp.Maximize(x*random.uniform(-1,1)+y*random.uniform(-1,1)+z*random.uniform(-1,1)+a*random.uniform(-1,1)), cons)   
 prob.solve(solver=cp.MOSEK, mosek_params={"MSK_IPAR_NUM_THREADS": 1})
 print(prob.status)
 print(prob.value)
