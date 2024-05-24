@@ -1,15 +1,21 @@
 CXX=g++
 CXXFLAGS=-fmax-errors=3 -O3 -march=native
-DEBUGFLAGS=-g -fmax-errors=3 -O0
+#CXXFLAGS=-g -fmax-errors=3 -Og -march=native -Wall
 LIBSEIGEN= -I${EIGENHOME}
 LIBSMOSEK= -I${MSKHOME}/h -L${MSKHOME}/bin -Wl,-rpath-link,${MSKHOME}/bin -Wl,-rpath=${MSKHOME}/bin -lmosek64 -lfusion64
-LIBSOPTIM= -I${OPTIMHOME}/header_only_version/ 
-LIBSAUTODIFF= -I${AUTODIFFHOME}/
-LIBS=$(LIBSEIGEN) $(LIBSMOSEK) $(LIBSOPTIM) $(LIBSAUTODIFF)
+LIBS=$(LIBSEIGEN) $(LIBSMOSEK)
+MAIN=src/main.cpp
+FILES=$(filter-out src/main.cpp, $(wildcard src/*.cpp))
+ASOBJ=$(FILES:.cpp=.o)
 
-all: 
-	$(CXX) $(CXXFLAGS) -o run main.cpp $(LIBS)
+all: run
 
-debug:
-	$(CXX) $(DEBUGFLAGS) -o run main.cpp $(LIBS)
+run: $(MAIN) $(ASOBJ)
+	$(CXX) $(CXXFLAGS) -o run $(MAIN) $(ASOBJ) $(LIBS)
+
+%.o: %.cpp %.h
+	$(CXX) $(CXXFLAGS) -c $< -o $@ $(LIBS)
+
+clean:
+	rm -f run src/*.o
 
