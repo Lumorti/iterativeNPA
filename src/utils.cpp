@@ -238,7 +238,8 @@ std::vector<Poly> generateMonomials(std::vector<Mon> variables, int level, int v
     // Remove the 1 if there is
     std::vector<Poly> asPolys;
     for (auto& monom : monomsInTopRow) {
-        if (monom.size() != 0) {
+        std::pair<std::complex<double>, Mon> monomCoeff = monom.reduce();
+        if (monomCoeff.second.size() != 0) {
             asPolys.push_back(Poly(monom));
         }
     }

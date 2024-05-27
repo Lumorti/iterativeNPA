@@ -1,2 +1,7 @@
 run
 *.log
+*.o
+*.dat
+temp*
+
+

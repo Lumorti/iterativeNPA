@@ -428,6 +428,54 @@ int main(int argc, char* argv[]) {
 
     //}
 
+    // Problem specific testing TODO
+    if (testing == 2) {
+        std::vector<int> rowsToRemove = {};
+        if (problemName == "CHSH") {
+            rowsToRemove = {0};
+        }
+        for (int i=rowsToRemove.size()-1; i>=0; i--) {
+            momentMatrices[0].erase(momentMatrices[0].begin() + rowsToRemove[i]);
+            for (int j=0; j<momentMatrices[0].size(); j++) {
+                momentMatrices[0][j].erase(momentMatrices[0][j].begin() + rowsToRemove[i]);
+            }
+        }
+        if (problemName == "I3322") {
+            constraintsZero.push_back(Poly("<A1>+<A2>"));
+            constraintsZero.push_back(Poly("<B1>+<B2>"));
+
+            constraintsZero.push_back(Poly("<A1B1>+<A1B2>"));
+            constraintsZero.push_back(Poly("<A2B1>+<A2B2>"));
+            constraintsZero.push_back(Poly("<A1B1>+<A2B1>"));
+
+            constraintsZero.push_back(Poly("<A1B3>-<A2B3>"));
+            constraintsZero.push_back(Poly("<A3B1>-<A3B2>"));
+            constraintsZero.push_back(Poly("<A1B3>-<A3B2>"));
+        }
+    }
+
+    if (testing == 3) {
+
+        // Remove a random number of rows
+        double chanceToRemove = rand() / (double)RAND_MAX;
+        std::cout << "Chance to remove: " << chanceToRemove << std::endl;
+        for (int i=0; i<momentMatrices[0].size(); i++) {
+            if (rand() / (double)RAND_MAX < chanceToRemove) {
+                momentMatrices[0].erase(momentMatrices[0].begin() + i);
+                for (int j=0; j<momentMatrices[0].size(); j++) {
+                    momentMatrices[0][j].erase(momentMatrices[0][j].begin() + i);
+                }
+                i--;
+            }
+        }
+        std::cout << "Removed " << chanceToRemove << " of the rows" << std::endl;
+        std::cout << "Size of moment matrix: " << momentMatrices[0].size() << "x" << momentMatrices[0][0].size() << std::endl;
+        if (momentMatrices[0].size() == 0) {
+            momentMatrices[0] = {{Poly(1)}};
+        }
+
+    }
+
     // Output the problem
     if (verbosity >= 2) {
         if (objective.size() > 0) {

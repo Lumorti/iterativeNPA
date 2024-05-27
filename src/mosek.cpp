@@ -564,6 +564,15 @@ double maximizeMOSEK(Poly obj, std::vector<std::vector<std::vector<Poly>>>& psd,
         std::vector<std::vector<std::complex<double>>> eigVecs;
         getEigens(psd[0], variables, variableValues, eigVecs, eigVals);
         std::cout << "Eigenvalues: " << eigVals << std::endl;
+        int numZeroEig = 0;
+        for (size_t i=0; i<eigVals.size(); i++) {
+            if (std::abs(eigVals[i]) < 1e-8) {
+                numZeroEig++;
+            }
+        }
+        int numPosEig = eigVals.size() - numZeroEig;
+        std::cout << "Num zero eig: " << numZeroEig << std::endl;
+        std::cout << "Num pos eig: " << numPosEig << std::endl;
 
         // Eval all of the constraints
         std::map<Mon, std::complex<double>> vals;
