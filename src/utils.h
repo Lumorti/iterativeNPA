@@ -41,3 +41,6 @@ std::vector<Mon> toVector(std::set<Mon> s);
 // Generate random number between min and max
 double rand(double min, double max);
 
+// Convert a primal SDP problem to a dual problem
+void primalToDual(Poly& objective, std::vector<std::vector<std::vector<Poly>>>& momentMatrices, std::vector<Poly>& constraintsZero, std::vector<Poly>& constraintsPositive);
+

@@ -42,6 +42,7 @@ public:
 
     // Checking equality of two polynomials
     bool operator==(const Poly& other);
+    bool operator!=(const Poly& other);
 
     // When summing two polynomials
     Poly operator+(const Poly& other);
@@ -64,6 +65,10 @@ public:
     // When multiplying by a constant
     Poly operator*(const std::complex<double>& other);
     friend Poly operator*(const std::complex<double>& other, const Poly& p);
+
+    // When multiplying by a monomial
+    Poly operator*(const Mon& other);
+    friend Poly operator*(const Mon& other, const Poly& p);
 
     // When multiplying by a constant in-place
     Poly& operator*=(const std::complex<double>& other);
@@ -101,8 +106,8 @@ public:
     Poly dagger() const;
 
     // Evaluate, given a list of variables and values
-    std::complex<double> eval(std::vector<std::pair<Mon, std::complex<double>>> vals);
-    std::complex<double> eval(std::map<Mon, std::complex<double>> vals);
+    std::complex<double> eval(std::vector<std::pair<Mon, std::complex<double>>>& vals);
+    std::complex<double> eval(std::map<Mon, std::complex<double>>& vals);
 
     // Given a reduce each monomial and combine
     void reduce();
@@ -147,6 +152,9 @@ public:
 
     // Check if the polynomial is constant
     bool isConstant() const;
+
+    // Apply a monomial map
+    Poly applyMap(std::map<Mon, Mon> map);
 
 };
 

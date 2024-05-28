@@ -104,6 +104,15 @@ const std::pair<char, int>& Mon::operator[](size_t index) const {
 bool Mon::operator==(const Mon& other) const {
     return monomial == other.monomial;
 }
+bool Mon::operator!=(const Mon& other) const {
+    return monomial != other.monomial;
+}
+bool Mon::operator==(const int other) const {
+    return monomial.size() == 0;
+}
+bool Mon::operator!=(const int other) const {
+    return monomial.size() != 0;
+}
 
 // Size of the monomial
 size_t Mon::size() const {

@@ -124,6 +124,9 @@ Poly& Poly::operator=(const std::map<Mon, std::complex<double>>& other) {
 bool Poly::operator==(const Poly& other) {
     return polynomial == other.polynomial;
 }
+bool Poly::operator!=(const Poly& other) {
+    return polynomial != other.polynomial;
+}
 
 // When summing two polynomials
 Poly Poly::operator+(const Poly& other) {
@@ -660,7 +663,7 @@ Mon Poly::getKey() {
 }
 
 // Evaluate, given a list of variables and values
-std::complex<double> Poly::eval(std::vector<std::pair<Mon, std::complex<double>>> vals) {
+std::complex<double> Poly::eval(std::vector<std::pair<Mon, std::complex<double>>>& vals) {
     std::complex<double> toReturn = 0;
     for (auto& term : polynomial) {
         std::complex<double> termValue = term.second;
@@ -675,8 +678,9 @@ std::complex<double> Poly::eval(std::vector<std::pair<Mon, std::complex<double>>
 }
 
 // Evaluate, given a list of variables and values
-std::complex<double> Poly::eval(std::map<Mon, std::complex<double>> vals) {
+std::complex<double> Poly::eval(std::map<Mon, std::complex<double>>& vals) {
     std::complex<double> toReturn = 0;
+    vals[Mon()] = 1;
     for (auto& term : polynomial) {
         toReturn += term.second * vals[term.first];
     }
@@ -716,6 +720,35 @@ void Poly::cycleToAndRemove(char variable, int index) {
 // Check if the polynomial is constant
 bool Poly::isConstant() const {
     return polynomial.size() == 1 && polynomial.find(Mon()) != polynomial.end();
+}
+
+// Apply a monomial map
+Poly Poly::applyMap(std::map<Mon, Mon> map) {
+    Poly toReturn;
+    for (auto& term : polynomial) {
+        Mon newMon = term.first;
+        if (map.find(newMon) != map.end()) {
+            newMon = map[newMon];
+        }
+        toReturn[newMon] = term.second;
+    }
+    return toReturn;
+}
+
+// Multiply by a monomial
+Poly Poly::operator*(const Mon& mon) {
+    Poly toReturn;
+    for (auto& term : polynomial) {
+        toReturn[term.first * mon] = term.second;
+    }
+    return toReturn;
+}
+Poly operator*(const Mon& mon, const Poly& p) {
+    Poly toReturn;
+    for (auto& term : p.polynomial) {
+        toReturn[mon * term.first] = term.second;
+    }
+    return toReturn;
 }
 
 

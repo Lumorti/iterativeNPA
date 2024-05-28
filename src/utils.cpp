@@ -366,3 +366,8 @@ double rand(double min, double max) {
     return min + (max - min) * (double)rand() / RAND_MAX;
 }
 
+// Convert a primal SDP problem to a dual problem
+void primalToDual(Poly& objective, std::vector<std::vector<std::vector<Poly>>>& momentMatrices, std::vector<Poly>& constraintsZero, std::vector<Poly>& constraintsPositive) {
+
+
+}

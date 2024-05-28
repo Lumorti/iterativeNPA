@@ -8,11 +8,16 @@
 // Import Eigen
 #include <Eigen/Dense>
 
+// Optim
+#define OPTIM_ENABLE_EIGEN_WRAPPERS
+#include "optim.hpp"
+
 // Local libs
 #include "poly.h"
 #include "utils.h"
 #include "mon.h"
 #include "mosek.h"
+#include "optim.h"
 
 // Generic entry function
 int main(int argc, char* argv[]) {
@@ -22,6 +27,7 @@ int main(int argc, char* argv[]) {
     int numOutcomesB = 2;
     int level = 1;
     int subLevel = -1;
+    bool useDual = false;
     Poly bellFunc("<A1B1>+<A1B2>+<A2B1>-<A2B2>");
     int testing = 0;
     int numToSample = 1000;
@@ -109,7 +115,7 @@ int main(int argc, char* argv[]) {
             i++;
 
         // Output the help
-        } else if (argAsString == "-h") {
+        } else if (argAsString == "-h" || argAsString == "--help") {
             std::cout << "Usage: " << argv[0] << " [options]" << std::endl;
             std::cout << "Options:" << std::endl;
             std::cout << "  -a <num>        Number of outcomes for Alice" << std::endl;
@@ -127,8 +133,13 @@ int main(int argc, char* argv[]) {
             std::cout << "  -t              Test the moment matrix" << std::endl;
             std::cout << "  -e <str>        Add an extra moment to the top row" << std::endl;
             std::cout << "  -h              Display this help message" << std::endl;
+            std::cout << "  -D              Use the dual of the problem" << std::endl;
             std::cout << "  -01             Use 0/1 output instead of -1/1" << std::endl;
             return 0;
+
+        // If using the dual
+        } else if (argAsString == "-D") {
+            useDual = true;
 
         // Set the starting penalty
         } else if (argAsString == "-p") {
@@ -428,7 +439,7 @@ int main(int argc, char* argv[]) {
 
     //}
 
-    // Problem specific testing TODO
+    // Problem specific testing
     if (testing == 2) {
         std::vector<int> rowsToRemove = {};
         if (problemName == "CHSH") {
@@ -474,6 +485,179 @@ int main(int argc, char* argv[]) {
             momentMatrices[0] = {{Poly(1)}};
         }
 
+    }
+
+    // TODO enforce that last row is mix of all the others
+    if (testing == 4) {
+
+        // Get the variable list from the moment matrix
+        std::set<Mon> variableSet;
+        variableSet.insert(Mon());
+        for (size_t i=0; i<momentMatrices.size(); i++) {
+            addVariables(variableSet, momentMatrices[i]);
+        }
+        for (size_t i=0; i<constraintsZero.size(); i++) {
+            addVariables(variableSet, constraintsZero[i]);
+        }
+        addVariables(variableSet, objective);
+        std::vector<Mon> variables = toVector(variableSet);
+
+        // Turn this into a map
+        std::map<Mon, Mon> varMap;
+        for (size_t i=0; i<variables.size(); i++) {
+            if (variables[i] != 1) {
+                varMap[variables[i]] = Mon("<X" + std::to_string(i) + ">");
+            }
+        }
+
+        // Apply the map
+        for (size_t i=0; i<momentMatrices[0].size(); i++) {
+            for (size_t j=0; j<momentMatrices[0][i].size(); j++) {
+                momentMatrices[0][i][j] = momentMatrices[0][i][j].applyMap(varMap);
+            }   
+        }
+
+        // Output the new matrix
+        std::cout << momentMatrices[0] << std::endl;
+
+        Poly newObj = objective.applyMap(varMap);
+        std::cout << "Objective: " << newObj << std::endl;
+
+        // The new constraints
+        int numXs = variables.size();
+        std::vector<Poly> newCons;
+        for (int i=0; i<momentMatrices[0].size(); i++) {
+            Poly newCon(momentMatrices[0][momentMatrices[0].size()-1][i]);
+            for (int j=momentMatrices[0].size()-2; j>=0; j--) {
+                newCon += Mon("<X" + std::to_string(numXs + j) + ">") * momentMatrices[0][j][i];
+            }
+            std::cout << newCon << " = 0 " << std::endl;
+            newCons.push_back(newCon);
+        }
+
+        solveOptim(newObj, newCons);
+
+        return 0;
+
+    }
+
+    if (testing >= 5) {
+
+        // Solve just as a linear system
+        std::vector<std::vector<Poly>> momentMatricesL1 = generateAllMomentMatrices(bellFunc, {}, 1, verbosity)[0];
+        std::vector<std::vector<Poly>> momentMatricesL2 = generateAllMomentMatrices(bellFunc, {}, 2, verbosity)[0];
+        std::vector<std::vector<Poly>> momentMatricesL3 = generateAllMomentMatrices(bellFunc, {}, 3, verbosity)[0];
+        std::vector<std::vector<Poly>> momentMatCopy = momentMatrices[0];
+        momentMatrices = {};
+
+        std::map<Mon, std::complex<double>> xMap;
+        xMap[Mon()] = 1;
+        for (int i=0; i<momentMatCopy.size(); i++) {
+            for (int j=0; j<momentMatCopy[i].size(); j++) {
+                xMap[momentMatCopy[i][j].getKey()] = 0;
+            }
+        }
+
+        double prevBound = 0;
+        for (int i=0; i<testing; i++) {
+
+            std::cout << "Linear solving " << i << std::endl;
+            double res = maximizeMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, &xMap);
+
+            //if (i == 200) {
+                //std::cout << "Switching to L2" << std::endl;
+                //momentMatCopy = momentMatricesL2;
+            //}
+            prevBound = res;
+
+            // Get the resulting matrix
+            std::cout << "Getting matrix" << std::endl;
+            Eigen::MatrixXd X = Eigen::MatrixXd::Zero(momentMatCopy.size(), momentMatCopy.size());
+            for (size_t i=0; i<momentMatCopy.size(); i++) {
+                for (size_t j=i; j<momentMatCopy[i].size(); j++) {
+                    X(i, j) = xMap[momentMatCopy[i][j].getKey()].real();
+                    X(j, i) = X(i, j);
+                }
+            }
+
+            // Get the eigenvalues and vectors
+            std::cout << "Eigensolving" << std::endl;
+            Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es(X);
+            Eigen::VectorXd eigVals = es.eigenvalues().real();
+            Eigen::MatrixXd eigVecs = es.eigenvectors().real();
+
+            std::cout << constraintsPositive.size() << " " << res << " " << eigVals.minCoeff() << std::endl;
+
+            // For each negative eigenvalue, store the eigenvector
+            std::vector<Eigen::VectorXd> negEigVecs;
+            for (int i=0; i<eigVals.size(); i++) {
+                if (eigVals(i) < 0) {
+                    negEigVecs.push_back(eigVecs.col(i));
+                }
+            }
+            if (negEigVecs.size() == 0) {
+                break;
+            }
+
+            // Add these as new cons
+            std::cout << "Adding constraints" << std::endl;
+            for (int i=0; i<negEigVecs.size(); i++) {
+                Poly newCon;
+                for (int j=0; j<momentMatCopy.size(); j++) {
+                    for (int k=0; k<momentMatCopy[j].size(); k++) {
+                        newCon[momentMatCopy[j][k].getKey()] += negEigVecs[i](j) * negEigVecs[i](k);
+                    }
+                }
+                constraintsPositive.push_back(newCon);
+            }
+
+        }
+
+        return 0;
+
+    }
+
+    //if (testing >= 6) {
+
+        //// We are gonna test converting the moment matrix into a set of linear constraints
+        //// A >= 0   becomes x^T A x >= 0 for some random x vectors
+
+        //// Make a bunch of random vectors
+        //int numVecs = testing;
+        //std::vector<std::vector<double>> randomVectors;
+        //for (int i=0; i<numVecs; i++) {
+            //std::vector<double> vec(momentMatrices[0].size(), 0);
+            //for (int j=0; j<vec.size(); j++) {
+                //vec[j] = rand(-0.1, 0.1);
+                ////if (std::abs(vec[j]) < 0.2) {
+                    ////vec[j] = 0;
+                ////} else if (vec[j] > 0) {
+                    ////vec[j] = 1;
+                ////} else {
+                    ////vec[j] = -1;
+                ////}
+            //}
+            //randomVectors.push_back(vec);
+        //}
+
+        //// newCon = x^T A x
+        //std::vector<Poly> newCons;
+        //for (int i=0; i<numVecs; i++) {
+            //Poly newCon;
+            //for (int j=0; j<momentMatrices[0].size(); j++) {
+                //for (int k=0; k<momentMatrices[0][j].size(); k++) {
+                    //newCon += momentMatrices[0][j][k] * randomVectors[i][j] * randomVectors[i][k];
+                //}
+            //}
+            //newCons.push_back(newCon);
+        //}
+        //momentMatrices = {};
+
+    //}
+
+    // If using the dual TODO
+    if (useDual) {
+        primalToDual(objective, momentMatrices, constraintsZero, constraintsPositive);
     }
 
     // Output the problem

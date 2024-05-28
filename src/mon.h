@@ -47,6 +47,9 @@ public:
 
     // Check equality
     bool operator==(const Mon& other) const;
+    bool operator!=(const Mon& other) const;
+    bool operator==(const int other) const;
+    bool operator!=(const int other) const;
 
     // Size of the monomial
     size_t size() const;

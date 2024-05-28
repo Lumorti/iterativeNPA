@@ -3,7 +3,8 @@ CXXFLAGS=-fmax-errors=3 -O3 -march=native
 #CXXFLAGS=-g -fmax-errors=3 -Og -march=native -Wall
 LIBSEIGEN= -I${EIGENHOME}
 LIBSMOSEK= -I${MSKHOME}/h -L${MSKHOME}/bin -Wl,-rpath-link,${MSKHOME}/bin -Wl,-rpath=${MSKHOME}/bin -lmosek64 -lfusion64
-LIBS=$(LIBSEIGEN) $(LIBSMOSEK)
+LIBSOPTIM= -I${OPTIMHOME}/header_only_version/ 
+LIBS=$(LIBSEIGEN) $(LIBSMOSEK) $(LIBSOPTIM)
 MAIN=src/main.cpp
 FILES=$(filter-out src/main.cpp, $(wildcard src/*.cpp))
 ASOBJ=$(FILES:.cpp=.o)
