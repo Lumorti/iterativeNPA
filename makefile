@@ -5,17 +5,25 @@ LIBSEIGEN= -I${EIGENHOME}
 LIBSMOSEK= -I${MSKHOME}/h -L${MSKHOME}/bin -Wl,-rpath-link,${MSKHOME}/bin -Wl,-rpath=${MSKHOME}/bin -lmosek64 -lfusion64
 LIBSOPTIM= -I${OPTIMHOME}/header_only_version/ 
 LIBS=$(LIBSEIGEN) $(LIBSMOSEK) $(LIBSOPTIM)
-MAIN=src/main.cpp
-FILES=$(filter-out src/main.cpp, $(wildcard src/*.cpp))
+FILES=$(wildcard src/*.cpp)
 ASOBJ=$(FILES:.cpp=.o)
 
 all: run
 
-run: $(MAIN) $(ASOBJ)
-	$(CXX) $(CXXFLAGS) -o run $(MAIN) $(ASOBJ) $(LIBS)
+run: $(ASOBJ)
+	$(CXX) $(CXXFLAGS) -o run $(ASOBJ) $(LIBS)
+
+src/main.o: src/main.cpp
+	$(CXX) $(CXXFLAGS) -c src/main.cpp -o src/main.o $(LIBSEIGEN) $(LIBSOPTIM)
+
+src/mosek.o: src/mosek.cpp src/mosek.h
+	$(CXX) $(CXXFLAGS) -c src/mosek.cpp -o src/mosek.o $(LIBSMOSEK) $(LIBSEIGEN)
+
+src/optim.o: src/optim.cpp src/optim.h
+	$(CXX) $(CXXFLAGS) -c src/optim.cpp -o src/optim.o $(LIBSOPTIM) $(LIBSEIGEN)
 
 %.o: %.cpp %.h
-	$(CXX) $(CXXFLAGS) -c $< -o $@ $(LIBS)
+	$(CXX) $(CXXFLAGS) -c $< -o $@ $(LIBSEIGEN)
 
 clean:
 	rm -f run src/*.o

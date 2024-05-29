@@ -115,6 +115,7 @@ public:
 
     // Remove any zero terms from this polynomial
     void clean();
+    Poly cleaned() const;
 
     // Pretty print
     friend std::ostream& operator<<(std::ostream& os, const Poly& p);

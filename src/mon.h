@@ -79,6 +79,8 @@ public:
     // Cycle the monomial to put a certain thing at the end
     Mon cycleTo(char variable, int index) const;
 
+    // Check if the monomial is constant
+    bool isConstant() const;
 
 };
 

@@ -2,13 +2,7 @@
 #include <sstream>
 #include <iostream>
 #include "mon.h"
-
-// Settings regarding reduction
-const bool pauliReductions = false;
-const std::string commutating = "letters"; // "none", "letters", "numbers", "both"
-const std::string ASquaredEquals = "1"; // "AA", "1", "A"
-const std::string sortOrder = "letterFirst"; // "none", "letterFirst", "numberFirst"
-const bool trySwap = true;
+#include "settings.h"
 
 // Useful constants
 const std::complex<double> imag(0, 1);
@@ -375,6 +369,11 @@ Mon Mon::cycleTo(char variable, int index) const {
     std::rotate(toReturn.monomial.begin(), toReturn.monomial.begin()+location+1, toReturn.monomial.end());
     return toReturn;
 
+}
+
+// Check if the monomial is empty (and thus represents 1)
+bool Mon::isConstant() const {
+    return size() == 0;
 }
 
 

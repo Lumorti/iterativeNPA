@@ -2,9 +2,6 @@
 #include <iostream>
 #include <vector>
 
-// Import MOSEK
-#include "fusion.h"
-
 // Import Eigen
 #include <Eigen/Dense>
 
@@ -217,7 +214,7 @@ int main(int argc, char* argv[]) {
             //std::vector<double> varValsL1;
             //std::vector<std::vector<std::vector<Poly>>> momentMatricesL1 = generateAllMomentMatrices(bellFunc, 1, subLevel, numToSample, use01);
             //std::vector<std::vector<std::vector<Poly>>> momentMatricesL2 = generateAllMomentMatrices(bellFunc, 2, subLevel, numToSample, use01);
-            //double resL1 = maximizeMOSEK(objective, momentMatricesL1, constraintsZero, constraintsPositive, verbosity, varNamesL1, varValsL1, use01);
+            //double resL1 = solveMOSEK(objective, momentMatricesL1, constraintsZero, constraintsPositive, verbosity, varNamesL1, varValsL1, use01);
             //Eigen::MatrixXd X = replaceVariables(momentMatricesL1[0], varNamesL1, varValsL1);
             //std::cout << "L1 result: " << resL1 << std::endl;
             //std::cout << "L1 solution: " << std::endl;
@@ -454,11 +451,9 @@ int main(int argc, char* argv[]) {
         if (problemName == "I3322") {
             constraintsZero.push_back(Poly("<A1>+<A2>"));
             constraintsZero.push_back(Poly("<B1>+<B2>"));
-
             constraintsZero.push_back(Poly("<A1B1>+<A1B2>"));
             constraintsZero.push_back(Poly("<A2B1>+<A2B2>"));
             constraintsZero.push_back(Poly("<A1B1>+<A2B1>"));
-
             constraintsZero.push_back(Poly("<A1B3>-<A2B3>"));
             constraintsZero.push_back(Poly("<A3B1>-<A3B2>"));
             constraintsZero.push_back(Poly("<A1B3>-<A3B2>"));
@@ -487,7 +482,7 @@ int main(int argc, char* argv[]) {
 
     }
 
-    // TODO enforce that last row is mix of all the others
+    // Enforce that last row is mix of all the others
     if (testing == 4) {
 
         // Get the variable list from the moment matrix
@@ -559,10 +554,10 @@ int main(int argc, char* argv[]) {
         }
 
         double prevBound = 0;
-        for (int i=0; i<testing; i++) {
+        for (int iter=0; iter<testing; iter++) {
 
-            std::cout << "Linear solving " << i << std::endl;
-            double res = maximizeMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, &xMap);
+            std::cout << "Linear solving " << iter << std::endl;
+            double res = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, {-1, 1}, &xMap);
 
             //if (i == 200) {
                 //std::cout << "Switching to L2" << std::endl;
@@ -657,6 +652,12 @@ int main(int argc, char* argv[]) {
 
     // If using the dual TODO
     if (useDual) {
+        if (verbosity >= 2) {
+            std::cout << "Primal objective: " << std::endl;
+            std::cout << objective << std::endl << std::endl;
+            std::cout << "Primal moment matrix: " << std::endl;
+            std::cout << momentMatrices[0] << std::endl << std::endl;
+        }
         primalToDual(objective, momentMatrices, constraintsZero, constraintsPositive);
     }
 
@@ -683,7 +684,11 @@ int main(int argc, char* argv[]) {
     }
 
     // Convert to MOSEK form and solve
-    double res = maximizeMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity);
+    std::pair<int,int> varBounds = {-1, 1};
+    if (useDual) {
+        varBounds = {-100, 100};
+    }
+    double res = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, varBounds);
     std::cout << "Result: " << res << std::endl;
 
     // If I3322, convert to the 0/1 version too

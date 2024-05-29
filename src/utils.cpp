@@ -1,5 +1,6 @@
 #include "utils.h"
 #include <iostream>
+#include "printing.h"
 
 // Given a matrix and a variable list, return the matrix with the variables replaced
 Eigen::MatrixXcd replaceVariables(std::vector<std::vector<Poly>>& momentMatrix, const std::vector<Mon>& variables, const std::vector<std::complex<double>>& varVals) {
@@ -369,5 +370,118 @@ double rand(double min, double max) {
 // Convert a primal SDP problem to a dual problem
 void primalToDual(Poly& objective, std::vector<std::vector<std::vector<Poly>>>& momentMatrices, std::vector<Poly>& constraintsZero, std::vector<Poly>& constraintsPositive) {
 
+    // First: put into into standard SDP form
+    // min C.X s.t. A.X = b, X >= 0
+        
+    // Define C
+    int matSize = momentMatrices[0].size();
+    std::vector<std::vector<double>> C = std::vector<std::vector<double>>(matSize, std::vector<double>(matSize, 0));
+    for (int j=0; j<momentMatrices[0].size(); j++) {
+        for (int k=j+1; k<momentMatrices[0][j].size(); k++) {
+            C[j][k] = -std::real(objective[momentMatrices[0][j][k].getKey()]) / 2;
+            C[k][j] = -C[j][k];
+        }
+    }
+
+    // Define the A matrices and b vector
+    std::vector<std::vector<std::vector<double>>> As;
+    std::vector<double> b;
+    for (int i=0; i<momentMatrices[0].size(); i++) {
+        for (int j=i; j<momentMatrices[0][i].size(); j++) {
+
+            // Trying to find the matrix relating this to other elements
+            std::vector<std::vector<double>> A(matSize, std::vector<double>(matSize, 0));
+            if (i == j) { 
+                A[i][j] = 1;
+            } else {
+                A[i][j] = 0.5;
+            }
+            double bVal = 0;
+            bool somethingFound = false;
+
+            // For each term in this poly, try to find an early term 
+            // that would reduce this to a constant
+            for (auto& term : momentMatrices[0][i][j]) {
+
+                // If it's a constant
+                if (term.first.isConstant()) {
+                    bVal += std::real(term.second);
+                    somethingFound = true;
+
+                // Otherwise find an earlier variable
+                } else {
+                    Mon monomToFind = term.first;
+                    bool found = false;
+                    for (int l=0; l<matSize; l++) {
+                        for (int m=l; m<matSize; m++) {
+                            if (l*matSize + m >= i*matSize + j) {
+                                break;
+                            }
+                            if (momentMatrices[0][l][m].size() == 1 && momentMatrices[0][l][m].getKey() == monomToFind) {
+                                if (l == m) { 
+                                    A[l][m] = -std::real(term.second);
+                                } else {
+                                    A[l][m] = -std::real(term.second) / 2;
+                                }
+                                somethingFound = true;
+                                found = true;
+                                break;
+                            }
+                        }
+                        if (found) {
+                            break;
+                        }
+                    }
+
+                }
+
+            }
+
+            // Add this matrix
+            if (somethingFound) {
+                As.push_back(A);
+                b.push_back(bVal);
+                std::cout << A << std::endl;
+                std::cout << bVal << std::endl;
+            }
+
+        }
+    }
+
+    // Convert the constraints to the dual objective b.y
+    Poly newObjective;
+    for (int i=0; i<b.size(); i++) {
+        if (std::abs(b[i]) > 1e-10) {
+            newObjective[Mon("<D" + std::to_string(i) + ">")] = b[i];
+        }
+    }
+
+    // Convert the objective to the dual constraints C-\sum_i y_i A_i >= 0
+    std::vector<std::vector<Poly>> newMomentMat(matSize, std::vector<Poly>(matSize, Poly()));
+    for (int i=0; i<matSize; i++) {
+        for (int j=i; j<matSize; j++) {
+            if (std::abs(C[i][j]) > 1e-10) {
+                newMomentMat[i][j][Mon()] = C[i][j];
+            }
+            for (int k=0; k<As.size(); k++) {
+                if (std::abs(As[k][i][j]) > 1e-10) {
+                    newMomentMat[i][j][Mon("<D" + std::to_string(k) + ">")] = -As[k][i][j];
+                }
+            }
+        }
+    }
+
+    // Symmetrize the matrix
+    for (int i=0; i<matSize; i++) {
+        for (int j=i+1; j<matSize; j++) {
+            newMomentMat[j][i] = newMomentMat[i][j];
+        }
+    }
+
+    // Change the vars
+    momentMatrices = {newMomentMat};
+    objective = newObjective;
+    constraintsZero = {};
+    constraintsPositive = {};
 
 }
