@@ -686,7 +686,7 @@ int main(int argc, char* argv[]) {
     // Convert to MOSEK form and solve
     std::pair<int,int> varBounds = {-1, 1};
     if (useDual) {
-        varBounds = {-100, 100};
+        varBounds = {-10000, 10000};
     }
     double res = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, varBounds);
     std::cout << "Result: " << res << std::endl;
