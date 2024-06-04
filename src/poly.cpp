@@ -294,8 +294,7 @@ const size_t Poly::size() const {
 
 // Allow bracket access
 const std::complex<double> Poly::operator[](Mon mon) const {
-    auto it = polynomial.find(mon);
-    return it != polynomial.end() ? it->second : std::complex<double>(0,0);
+    return polynomial.at(mon);
 }
 
 // Allow bracket access
@@ -512,10 +511,10 @@ void Poly::replace(std::pair<char,int> mon, Poly replacement) {
 }
 
 // Remove any zero terms from this polynomial
-void Poly::clean() {
+void Poly::clean(double tol) {
     std::vector<Mon> toRemove;
     for (auto& term : polynomial) {
-        if (std::abs(term.second) < zeroTol) {
+        if (std::abs(term.second) < tol) {
             toRemove.push_back(term.first);
         }
     }
@@ -523,10 +522,10 @@ void Poly::clean() {
         polynomial.erase(mon);
     }
 }
-Poly Poly::cleaned() const {
+Poly Poly::cleaned(double tol) const {
     Poly toReturn;
     for (auto& term : polynomial) {
-        if (std::abs(term.second) > zeroTol) {
+        if (std::abs(term.second) > tol) {
             toReturn.polynomial[term.first] = term.second;
         }
     }

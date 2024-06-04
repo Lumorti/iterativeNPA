@@ -3,6 +3,27 @@
 #include "printing.h"
 
 // Given a matrix and a variable list, return the matrix with the variables replaced
+Eigen::MatrixXcd replaceVariables(std::vector<std::vector<Poly>>& momentMatrix, const std::map<Mon, std::complex<double>>& varVals) {
+
+    // Replace each variable with its value
+    Eigen::MatrixXcd momentMatrixEigen = Eigen::MatrixXcd::Zero(momentMatrix.size(), momentMatrix.size());
+    for (size_t i=0; i<momentMatrix.size(); i++) {
+        for (size_t j=i; j<momentMatrix[i].size(); j++) {
+            for (auto& term : momentMatrix[i][j]) {
+                if (term.first.isConstant()) {
+                    momentMatrixEigen(i, j) += term.second;
+                } else {
+                    momentMatrixEigen(i, j) += term.second * varVals.at(term.first);
+                }
+            }
+            momentMatrixEigen(j, i) = std::conj(momentMatrixEigen(i, j));
+        }
+    }
+    return momentMatrixEigen;
+
+}
+
+// Given a matrix and a variable list, return the matrix with the variables replaced
 Eigen::MatrixXcd replaceVariables(std::vector<std::vector<Poly>>& momentMatrix, const std::vector<Mon>& variables, const std::vector<std::complex<double>>& varVals) {
 
     // Replace each variable with its value

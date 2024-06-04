@@ -5,10 +5,6 @@
 // Import Eigen
 #include <Eigen/Dense>
 
-// Optim
-#define OPTIM_ENABLE_EIGEN_WRAPPERS
-#include "optim.hpp"
-
 // Local libs
 #include "poly.h"
 #include "utils.h"
@@ -29,7 +25,7 @@ int main(int argc, char* argv[]) {
     int testing = 0;
     int numToSample = 1000;
     int verbosity = 1;
-    int maxIters = 1000;
+    int maxIters = 1;
     double startingPenalty = 1e5;
     int numPenalties = 5;
     bool use01 = false;
@@ -199,340 +195,124 @@ int main(int argc, char* argv[]) {
     std::vector<Poly> constraintsPositive;
 
     // The idea of using the dual to find cons that aren't in level 1 TODO
-    //if (testing == 1) {
+    if (testing == 1) {
 
-        //std::cout << "Primal moment matrix: " << std::endl;
-        //std::cout << momentMatrices[0] << std::endl << std::endl;
-        //std::cout << "Primal objective: " << std::endl;
-        //std::cout << objective << std::endl << std::endl;
+        std::cout << "Primal moment matrix: " << std::endl;
+        std::cout << momentMatrices[0] << std::endl << std::endl;
+        std::cout << "Primal objective: " << std::endl;
+        std::cout << objective << std::endl << std::endl;
 
-        //// Keep iterating, for now just a fixed number of times
-        //for (int iter=0; iter<maxIters; iter++) {
+        // Keep iterating, for now just a fixed number of times
+        for (int iter=0; iter<maxIters; iter++) {
 
-            //// Get the L1 solution
-            //std::vector<Mon> varNamesL1;
-            //std::vector<double> varValsL1;
-            //std::vector<std::vector<std::vector<Poly>>> momentMatricesL1 = generateAllMomentMatrices(bellFunc, 1, subLevel, numToSample, use01);
-            //std::vector<std::vector<std::vector<Poly>>> momentMatricesL2 = generateAllMomentMatrices(bellFunc, 2, subLevel, numToSample, use01);
-            //double resL1 = solveMOSEK(objective, momentMatricesL1, constraintsZero, constraintsPositive, verbosity, varNamesL1, varValsL1, use01);
-            //Eigen::MatrixXd X = replaceVariables(momentMatricesL1[0], varNamesL1, varValsL1);
-            //std::cout << "L1 result: " << resL1 << std::endl;
-            //std::cout << "L1 solution: " << std::endl;
-            //std::cout << X << std::endl << std::endl;
+            // Get the L1 solution
+            std::map<Mon, std::complex<double>> varValsL1;
+            std::vector<std::vector<std::vector<Poly>>> momentMatricesL1 = generateAllMomentMatrices(bellFunc, {}, 1, verbosity);
+            std::vector<std::vector<std::vector<Poly>>> momentMatricesL2 = generateAllMomentMatrices(bellFunc, {}, 2, verbosity);
+            double resL1 = solveMOSEK(objective, momentMatricesL1, constraintsZero, constraintsPositive, verbosity, {-1, 1}, &varValsL1);
+            Eigen::MatrixXcd X = replaceVariables(momentMatricesL1[0], varValsL1);
+            std::cout << "L1 result: " << resL1 << std::endl;
+            std::cout << "L1 solution: " << std::endl;
+            std::cout << X << std::endl << std::endl;
 
-            //// Then find the dual for the L2
-            //momentMatrices = momentMatricesL2;
-
-            //// Define C
-            //int matSize = momentMatrices[0].size();
-            //std::vector<std::vector<double>> C = std::vector<std::vector<double>>(matSize, std::vector<double>(matSize, 0));
-            //for (int i=0; i<objective.size(); i++) {
-                //monomial monToFind = objective[i].second;
-                //int locX = -1;
-                //int locY = -1;
-                //for (int j=0; j<momentMatrices[0].size(); j++) {
-                    //for (int k=j+1; k<momentMatrices[0][j].size(); k++) {
-                        //if (momentMatrices[0][j][k].size() == 1 && momentMatrices[0][j][k][0].second == monToFind) {
-                            //locX = j;
-                            //locY = k;
-                            //break;
-                        //}
-                    //}
-                //}
-                //C[locX][locY] = -objective[i].first/2.0;
-                //C[locY][locX] = -objective[i].first/2.0;
-            //}
-
-            //// Define the A matrices and b vector
-            //std::vector<doubleMatrix> As;
-            //std::vector<double> b;
-            //for (int i=0; i<momentMatrices[0].size(); i++) {
-                //for (int j=i; j<momentMatrices[0][i].size(); j++) {
-
-                    //// Trying to find the matrix relating this to other elements
-                    //doubleMatrix A(matSize, doubleVector(matSize, 0));
-                    //if (i == j) { 
-                        //A[i][j] = 1;
-                    //} else {
-                        //A[i][j] = 0.5;
-                    //}
-                    //double bVal = 0;
-                    //bool somethingFound = false;
-
-                    //// For each term in this poly, try to find an early term 
-                    //// that would reduce this to a constant
-                    //for (int k=0; k<momentMatrices[0][i][j].size(); k++) {
-
-                        //// If it's a constant
-                        //if (momentMatrices[0][i][j][k].second.size() == 0) {
-                            //bVal += momentMatrices[0][i][j][k].first;
-                            //somethingFound = true;
-                            //continue;
-                        //}
-
-                        //// Otherwise find an earlier variable
-                        //monomial monomToFind = momentMatrices[0][i][j][k].second;
-                        //bool found = false;
-                        //for (int l=0; l<momentMatrices[0].size(); l++) {
-                            //for (int m=l; m<momentMatrices[0][l].size(); m++) {
-                                //if (l*momentMatrices[0].size() + m >= i*momentMatrices[0].size() + j) {
-                                    //break;
-                                //}
-                                //if (momentMatrices[0][l][m].size() == 1 && momentMatrices[0][l][m][0].second == monomToFind) {
-                                    //if (l == m) { 
-                                        //A[l][m] = -momentMatrices[0][i][j][k].first;
-                                    //} else {
-                                        //A[l][m] = -momentMatrices[0][i][j][k].first / 2.0;
-                                    //}
-                                    //somethingFound = true;
-                                    //found = true;
-                                    //break;
-                                //}
-                            //}
-                            //if (found) {
-                                //break;
-                            //}
-                        //}
-
-                    //}
-
-                    //// Add this matrix
-                    //if (somethingFound) {
-                        //As.push_back(A);
-                        //b.push_back(bVal);
-                    //}
-
-                //}
-            //}
-                
-            //// Convert the constraints to the dual objective b.y
-            //Poly newObjective;
-            //for (int i=0; i<b.size(); i++) {
-                //if (std::abs(b[i]) > 1e-10) {
-                    //newObjective.push_back(std::make_pair(b[i], stringToMonomial("<D" + std::to_string(i) + ">")));
-                //}
-            //}
-            //std::cout << "Dual objective: " << newObjective << std::endl;
-
-            //// Convert the objective to the dual constraints C-\sum_i y_i A_i >= 0
-            //std::vector<std::vector<Poly>> newMomentMat = std::vector<std::vector<Poly>>(matSize, std::vector<Poly>(matSize, Poly()));
-            //for (int i=0; i<matSize; i++) {
-                //for (int j=i; j<matSize; j++) {
-                    //newMomentMat[i][j].push_back(std::make_pair(C[i][j], monomial()));
-                    //for (int k=0; k<As.size(); k++) {
-                        //if (std::abs(As[k][i][j]) > 1e-10) {
-                            //newMomentMat[i][j].push_back(std::make_pair(-As[k][i][j], stringToMonomial("<D" + std::to_string(k) + ">")));
-                        //}
-                    //}
-                //}
-            //}
-
-            //// Symmetrize the matrix
-            //for (int i=0; i<matSize; i++) {
-                //for (int j=i+1; j<matSize; j++) {
-                    //newMomentMat[j][i] = newMomentMat[i][j];
-                //}
-            //}
-            //std::cout << "Dual moment matrix: " << std::endl;
-            //std::cout << newMomentMat << std::endl << std::endl;
-
-            //// Objective being the inner product with the primal solution
-            //newObjective = Poly();
-            //for (int i=0; i<X.rows(); i++) {
-                //for (int j=i; j<X.cols(); j++) {
-                    //for (int k=0; k<newMomentMat[i][j].size(); k++) {
-                        //if (i == j) {
-                            //newObjective.push_back(std::make_pair(X(i,j), newMomentMat[i][j][k].second));
-                        //} else {
-                            //newObjective.push_back(std::make_pair(2.0*X(i,j), newMomentMat[i][j][k].second));
-                        //}
-                    //}
-                //}
-            //}
-
-            //// Solve the dual
-            //Poly objectiveDual = newObjective;
-            //std::vector<std::vector<std::vector<Poly>>> momentMatricesDual = {newMomentMat};
-            //std::vector<Poly> constraintsZeroDual = {};
-            //std::vector<Poly> constraintsPositiveDual = {};
-            //std::vector<double> varVals;
-            //std::vector<Mon> varNames;
-            //solveMOSEK(objectiveDual, momentMatricesDual, constraintsZeroDual, constraintsPositiveDual, verbosity, varNames, varVals);
-
-            //return 0;
-
-            //// Using this dual info, generate the sub-problem
-            //std::vector<std::vector<std::vector<Poly>>> momentMatricesSub = generateAllMomentMatrices(bellFunc, level+1, subLevel, numToSample, use01);
-            //Eigen::MatrixXd Y = replaceVariables(momentMatricesDual[0], varNames, varVals);
-            //std::cout << "Y: " << std::endl;
-            //std::cout << Y << std::endl << std::endl;
-            //Poly objectiveSub;
-            //for (int i=0; i<Y.rows()-iter; i++) {
-                //for (int j=i; j<Y.cols()-iter; j++) {
-                    //for (int k=0; k<momentMatricesSub[0][i][j].size(); k++) {
-                        //if (i == j) {
-                            //objectiveSub.push_back(std::make_pair(-Y(i,j), momentMatricesSub[0][i][j][k].second));
-                        //} else {
-                            //objectiveSub.push_back(std::make_pair(-2.0*Y(i,j), momentMatricesSub[0][i][j][k].second));
-                        //}
-                    //}
-                //}
-            //}
-            //std::cout << "Sub problem objective: " << std::endl;
-            //objectiveSub = simplify(objectiveSub);
-            //std::cout << objectiveSub << std::endl << std::endl;
-            //std::vector<Poly> constraintsZeroSub = {};
-            //std::vector<Poly> constraintsPositiveSub = {};
-
-            //// Solve the sub problem
-            //std::vector<double> varValsSub;
-            //std::vector<monomial> varNamesSub;
-            //double valSub = solveMOSEK(objectiveSub, momentMatricesSub, constraintsZeroSub, constraintsPositiveSub, verbosity, varNamesSub, varValsSub);
-
-            //// Check for convergence
-            //if (std::abs(valSub) < 1e-5) {
-                //std::cout << "Converged due to sub-problem giving zero" << std::endl;
-                //break;
-            //}
-
-            //// Output the vars
-            ////std::cout << "Vars: " << std::endl;
-            ////for (int i=0; i<varNamesSub.size(); i++) {
-                ////std::cout << varNamesSub[i] << " = " << varValsSub[i] << std::endl;
-            ////}
-
-            //// Generate the new constraint 
-            //Poly newPositivityCon = objectiveSub;
-            //newPositivityCon.push_back(std::make_pair(-valSub, monomial()));
-            ////for (int i=0; i<objectiveSub.size(); i++) {
-                ////for (int j=0; j<varNamesSub.size(); j++) {
-                    ////if (varNamesSub[j] == objectiveSub[i].second) {
-                        ////newPositivityCon.push_back(std::make_pair(objectiveSub[i].first, objectiveSub[i].second));
-                        ////break;
-                    ////}
-                ////}
-            ////}
-            //newPositivityCon = simplify(newPositivityCon);
-            //for (int i=0; i<newPositivityCon.size(); i++) {
-                //newPositivityCon[i].first *= -1;
-            //}
-            //std::cout << "New positivity constraint: " << std::endl;
-            //std::cout << newPositivityCon << std::endl << std::endl;
-
-            //// Add this to the original main moment matrix, expanding by one
-            //momentMatrices[0].push_back(std::vector<Poly>(matSize+1, Poly()));
-            //for (int i=0; i<matSize; i++) {
-                //momentMatrices[0][i].push_back(Poly());
-            //}
-            //momentMatrices[0][matSize][matSize] = newPositivityCon;
-
-            //// Output the new moment matrix
-            //std::cout << "New moment matrix: " << std::endl;
-            //std::cout << momentMatrices[0] << std::endl << std::endl;
-
-        //}
-
-        //return 0;
-
-    //}
-
-    // Problem specific testing
-    if (testing == 2) {
-        std::vector<int> rowsToRemove = {};
-        if (problemName == "CHSH") {
-            rowsToRemove = {0};
-        }
-        for (int i=rowsToRemove.size()-1; i>=0; i--) {
-            momentMatrices[0].erase(momentMatrices[0].begin() + rowsToRemove[i]);
-            for (int j=0; j<momentMatrices[0].size(); j++) {
-                momentMatrices[0][j].erase(momentMatrices[0][j].begin() + rowsToRemove[i]);
+            // Solve the dual
+            Poly objectiveDual = objective;
+            std::vector<std::vector<std::vector<Poly>>> momentMatricesL2Dual = momentMatricesL2;
+            std::vector<Poly> constraintsZeroDual = constraintsZero;
+            std::vector<Poly> constraintsPositiveDual = constraintsPositive;
+            std::map<Mon, std::complex<double>> varValsL2;
+            primalToDual(objectiveDual, momentMatricesL2Dual, constraintsZeroDual, constraintsPositiveDual);
+            objectiveDual = Poly();
+            for (int i=0; i<X.rows(); i++) {
+                for (int j=0; j<X.cols(); j++) {
+                    if (std::abs(X(i,j)) > 1e-10) {
+                        objectiveDual -= Poly(X(i,j) * momentMatricesL2Dual[0][i][j]);
+                    }
+                }
             }
+            std::cout << "Dual moment matrix: " << std::endl;
+            std::cout << momentMatricesL2Dual[0] << std::endl << std::endl;
+            std::cout << "Dual objective: " << std::endl;
+            std::cout << objectiveDual << std::endl << std::endl;
+            double resL2 = solveMOSEK(objectiveDual, momentMatricesL2Dual, constraintsZeroDual, constraintsPositiveDual, verbosity, {-10, 10}, &varValsL2);
+            Eigen::MatrixXcd Y = replaceVariables(momentMatricesL2Dual[0], varValsL2);
+            std::cout << "L2 result: " << resL2 << std::endl;
+            std::cout << "L2 solution: " << std::endl;
+            std::cout << Y << std::endl << std::endl;
+
+            // Generate the new constraint
+            Poly newCon;
+            for (int i=0; i<momentMatrices[0].size(); i++) {
+                for (int j=0; j<momentMatrices[0][i].size(); j++) {
+                    newCon += Poly(X(i,j) * momentMatricesL2Dual[0][i][j]);
+                }
+            }
+            std::cout << "New constraint: " << std::endl;
+            std::cout << newCon << std::endl << std::endl;
+
+            std::cout << "New con evalled: " << newCon.eval(varValsL2) << std::endl;
+
+            constraintsPositiveDual.push_back(newCon);
+
+            // Solve again
+            double resL2Again = solveMOSEK(objectiveDual, momentMatricesL2Dual, constraintsZeroDual, constraintsPositiveDual, verbosity, {-10, 10}, &varValsL2);
+
         }
-        if (problemName == "I3322") {
-            constraintsZero.push_back(Poly("<A1>+<A2>"));
-            constraintsZero.push_back(Poly("<B1>+<B2>"));
-            constraintsZero.push_back(Poly("<A1B1>+<A1B2>"));
-            constraintsZero.push_back(Poly("<A2B1>+<A2B2>"));
-            constraintsZero.push_back(Poly("<A1B1>+<A2B1>"));
-            constraintsZero.push_back(Poly("<A1B3>-<A2B3>"));
-            constraintsZero.push_back(Poly("<A3B1>-<A3B2>"));
-            constraintsZero.push_back(Poly("<A1B3>-<A3B2>"));
-        }
+
+        return 0;
+
     }
 
     if (testing == 3) {
 
-        // Remove a random number of rows
-        double chanceToRemove = rand() / (double)RAND_MAX;
-        std::cout << "Chance to remove: " << chanceToRemove << std::endl;
+        // Put random values into the moment matrix
+        std::map<Mon, std::complex<double>> varVals;
         for (int i=0; i<momentMatrices[0].size(); i++) {
-            if (rand() / (double)RAND_MAX < chanceToRemove) {
-                momentMatrices[0].erase(momentMatrices[0].begin() + i);
-                for (int j=0; j<momentMatrices[0].size(); j++) {
-                    momentMatrices[0][j].erase(momentMatrices[0][j].begin() + i);
-                }
-                i--;
+            for (int j=0; j<momentMatrices[0][i].size(); j++) {
+                varVals[momentMatrices[0][i][j].getKey()] = std::complex<double>(rand(-1, 1), 0);
             }
         }
-        std::cout << "Removed " << chanceToRemove << " of the rows" << std::endl;
-        std::cout << "Size of moment matrix: " << momentMatrices[0].size() << "x" << momentMatrices[0][0].size() << std::endl;
-        if (momentMatrices[0].size() == 0) {
-            momentMatrices[0] = {{Poly(1)}};
+        Eigen::MatrixXcd X = replaceVariables(momentMatrices[0], varVals);
+
+        // Check the rank
+        Eigen::FullPivLU<Eigen::MatrixXcd> lu(X);
+        std::cout << "Rank: " << lu.rank() << " / " << X.rows() << std::endl;
+
+        std::cout << "Moment matrix: " << std::endl;
+        std::cout << momentMatrices[0] << std::endl;
+
+
+        std::cout << "Moment matrix with random values: " << std::endl;
+        std::cout << X << std::endl;
+
+        // Do Guassian elimination on matrix X
+        std::vector<std::vector<Poly>> newMat = momentMatrices[0];
+        for (int i=0; i<X.rows(); i++) {
+            for (int j=i+1; j<X.rows(); j++) {
+                std::complex<double> toMult = X(j,i) / X(i,i);
+                X.row(j) -= X.row(i) * toMult;
+                for (int k=0; k<X.cols(); k++) {
+                    newMat[j][k] -= newMat[i][k] * toMult;
+                }
+            }
+        }
+
+        std::cout << "After GE: " << std::endl;
+        std::cout << X << std::endl;
+
+        std::cout << "After GE: " << std::endl;
+        std::cout << newMat << std::endl;
+
+        // Add the diagonals as positivity constraints
+        for (int i=0; i<X.rows(); i++) {
+            constraintsPositive.push_back(newMat[i][i]);
         }
 
     }
 
-    // Enforce that last row is mix of all the others
     if (testing == 4) {
 
-        // Get the variable list from the moment matrix
-        std::set<Mon> variableSet;
-        variableSet.insert(Mon());
-        for (size_t i=0; i<momentMatrices.size(); i++) {
-            addVariables(variableSet, momentMatrices[i]);
-        }
-        for (size_t i=0; i<constraintsZero.size(); i++) {
-            addVariables(variableSet, constraintsZero[i]);
-        }
-        addVariables(variableSet, objective);
-        std::vector<Mon> variables = toVector(variableSet);
-
-        // Turn this into a map
-        std::map<Mon, Mon> varMap;
-        for (size_t i=0; i<variables.size(); i++) {
-            if (variables[i] != 1) {
-                varMap[variables[i]] = Mon("<X" + std::to_string(i) + ">");
-            }
-        }
-
-        // Apply the map
-        for (size_t i=0; i<momentMatrices[0].size(); i++) {
-            for (size_t j=0; j<momentMatrices[0][i].size(); j++) {
-                momentMatrices[0][i][j] = momentMatrices[0][i][j].applyMap(varMap);
-            }   
-        }
-
-        // Output the new matrix
-        std::cout << momentMatrices[0] << std::endl;
-
-        Poly newObj = objective.applyMap(varMap);
-        std::cout << "Objective: " << newObj << std::endl;
-
-        // The new constraints
-        int numXs = variables.size();
-        std::vector<Poly> newCons;
-        for (int i=0; i<momentMatrices[0].size(); i++) {
-            Poly newCon(momentMatrices[0][momentMatrices[0].size()-1][i]);
-            for (int j=momentMatrices[0].size()-2; j>=0; j--) {
-                newCon += Mon("<X" + std::to_string(numXs + j) + ">") * momentMatrices[0][j][i];
-            }
-            std::cout << newCon << " = 0 " << std::endl;
-            newCons.push_back(newCon);
-        }
-
-        solveOptim(newObj, newCons);
-
-        return 0;
+        double sol = solveOptim(objective, constraintsPositive, momentMatrices[0]);
 
     }
 
@@ -659,6 +439,74 @@ int main(int argc, char* argv[]) {
             std::cout << momentMatrices[0] << std::endl << std::endl;
         }
         primalToDual(objective, momentMatrices, constraintsZero, constraintsPositive);
+    }
+
+    if (testing == 2) {
+
+        // Start from all zeros
+        std::map<Mon, std::complex<double>> startVals;
+        std::map<Mon, std::complex<double>> endVals;
+        for (int i=0; i<momentMatrices[0].size(); i++) {
+            for (int j=0; j<momentMatrices[0][i].size(); j++) {
+                std::cout << momentMatrices[0][i][j] << std::endl;
+                if (!momentMatrices[0][i][j].isConstant()) {
+                    if (i == j) {
+                        //startVals[momentMatrices[0][i][j].getKey()] = std::complex<double>(-1, 0);
+                        //endVals[momentMatrices[0][i][j].getKey()] = std::complex<double>(rand(0, 1), 0);
+                        startVals[momentMatrices[0][i][j].getKey()] = std::complex<double>(0, 0);
+                        endVals[momentMatrices[0][i][j].getKey()] = std::complex<double>(0, 0);
+                    } else {
+                        startVals[momentMatrices[0][i][j].getKey()] = std::complex<double>(0, 0);
+                        endVals[momentMatrices[0][i][j].getKey()] = std::complex<double>(rand(-1, 1), 0);
+                    }
+                }
+            }
+        }
+        //for (auto mon : objective) {
+            //if (!mon.first.isConstant()) {
+                //endVals[mon.first] = std::complex<double>(1, 0) * mon.second;
+            //}
+        //}
+
+        double stepSize = 0.1;
+        for (int i=0; i<maxIters; i++) {
+
+            std::map<Mon, std::complex<double>> varVals;
+            for (auto& mon : startVals) {
+                varVals[mon.first] = (startVals[mon.first] + endVals[mon.first]) / 2.0;
+            }
+
+            // Check if X is positive
+            Eigen::MatrixXcd X = replaceVariables(momentMatrices[0], varVals);
+            Eigen::SelfAdjointEigenSolver<Eigen::MatrixXcd> es(X);
+            double minEig = es.eigenvalues().minCoeff();
+            std::cout << X << std::endl;
+            std::cout << "Min eig: " << minEig << std::endl;
+            double newObjVal = objective.eval(varVals).real();
+            std::cout << "Objective: " << newObjVal << std::endl;
+
+            if (minEig < 0) {
+                endVals = varVals;
+            } else {
+                startVals = varVals;
+            }
+
+            //if (minEig < 0) {
+                //for (auto& mon : objective) {
+                    //varVals[mon.first] -= stepSize * mon.second;
+                //}
+                //stepSize *= 0.9;
+            //}
+
+            //// Travel in the direction of the objective
+            //for (auto& mon : objective) {
+                //varVals[mon.first] += stepSize * mon.second;
+            //}
+
+        }
+
+        return 0;
+
     }
 
     // Output the problem

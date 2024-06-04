@@ -13,6 +13,8 @@ struct optimData {
     double penalty;
     Poly objective;
     std::vector<Poly> equalityCons;
+    std::vector<std::vector<Poly>> momentMatrix;
+    std::set<Mon> varList;
 };
 
 // Cost/gradient function for optim
@@ -22,8 +24,10 @@ static double gradFunction(const Eigen::VectorXd& x, Eigen::VectorXd* gradOut, v
     optimData* optDataRecast = reinterpret_cast<optimData*>(optData);
 
     std::map<Mon, std::complex<double>> xMap;
-    for (size_t i=0; i<x.size(); i++) {
-        xMap[Mon("<X" + std::to_string(i) + ">")] = std::complex<double>(x(i), 0.0);
+    int i = 0;
+    for (auto mon : optDataRecast->varList) {
+        xMap[mon] = std::real(x(i));
+        i++;
     }
 
     //std::cout << "X = " << x << std::endl;
@@ -32,10 +36,10 @@ static double gradFunction(const Eigen::VectorXd& x, Eigen::VectorXd* gradOut, v
     double cost = 0.0;
     cost -= optDataRecast->objective.eval(xMap).real();
     for (size_t i=0; i<optDataRecast->equalityCons.size(); i++) {
-        //std::cout << optDataRecast->equalityCons[i] << std::endl;
-        //std::cout << optDataRecast->equalityCons[i].eval(xMap) << std::endl;
         cost += optDataRecast->penalty * std::pow(optDataRecast->equalityCons[i].eval(xMap).real(), 2);
     }
+    Eigen::MatrixXcd momentMatrix = replaceVariables(optDataRecast->momentMatrix, xMap);
+    cost -= optDataRecast->penalty * std::log(momentMatrix.determinant().real());
 
     // Calculate the gradient
     if (gradOut) {
@@ -50,33 +54,24 @@ static double gradFunction(const Eigen::VectorXd& x, Eigen::VectorXd* gradOut, v
 
 }
 
-double solveOptim(Poly objective, std::vector<Poly> cons) {
+double solveOptim(Poly objective, std::vector<Poly> cons, std::vector<std::vector<Poly>> momentMatrix) {
 
     // Get the list of variables
-    int highestXInd = 0;
-    for (auto const& [mon, coeff] : objective.polynomial) {
-        for (auto const& part : mon.monomial) {
-            if (part.first == 'X') {
-                highestXInd = std::max(highestXInd, part.second);
-            }
-        }
-    }
+    std::set<Mon> varList;
+    addVariables(varList, momentMatrix);
+    addVariables(varList, objective);
     for (size_t i=0; i<cons.size(); i++) {
-        for (auto const& [mon, coeff] : cons[i].polynomial) {
-            for (auto const& part : mon.monomial) {
-                if (part.first == 'X') {
-                    highestXInd = std::max(highestXInd, part.second);
-                }
-            }
-        }
+        addVariables(varList, cons[i]);
     }
-    int numVars = highestXInd + 1;
+    int numVars = varList.size();
 
     // Set up the optimisation
     Eigen::VectorXd x = Eigen::VectorXd::Zero(numVars);
     optimData optData;
     optData.objective = objective;
     optData.equalityCons = cons;
+    optData.momentMatrix = momentMatrix;
+    optData.varList = varList;
     optData.penalty = 1e3;
 
     // Check the initial cost
@@ -87,7 +82,7 @@ double solveOptim(Poly objective, std::vector<Poly> cons) {
     // Settings for the optimiser
     optim::algo_settings_t settings;
     settings.print_level = 1;
-    settings.iter_max = 10000;
+    settings.iter_max = 1000;
     settings.rel_objfn_change_tol = 1e-10;
     settings.gd_settings.method = 6;
     settings.lbfgs_settings.par_M = 10;
@@ -101,13 +96,26 @@ double solveOptim(Poly objective, std::vector<Poly> cons) {
     //bool success = optim::nm(x, gradFunction, &optData, settings);
 
     // Optimise
-    optData.penalty = 1e3;
-    for (int i=0; i<10; i++) {
+    optData.penalty = 1e1;
+    for (int iter=0; iter<10; iter++) {
         std::cout << "Optimising with " << numVars << " variables and penalty " << optData.penalty << std::endl;
         //bool success = optim::lbfgs(x, gradFunction, &optData, settings);
         bool success = optim::nm(x, gradFunction, &optData, settings);
         std::cout << "Result = " << gradFunction(x, &gradData, &optData) << std::endl;
         optData.penalty *= 2;
+
+        std::map<Mon, std::complex<double>> xMap;
+        int i = 0;
+        for (auto mon : varList) {
+            xMap[mon] = std::real(x(i));
+            i++;
+        }
+        std::cout << "Obj = " << objective.eval(xMap) << std::endl;
+        Eigen::MatrixXcd M = replaceVariables(momentMatrix, xMap);
+        std::cout << "Moment mat = " << std::endl;
+        std::cout << M << std::endl;
+        std::cout << "Det = " << M.determinant() << std::endl;
+
     }
 
     optData.penalty = 0;

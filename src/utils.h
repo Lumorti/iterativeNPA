@@ -7,6 +7,7 @@
 
 // Given a matrix and a variable list, return the matrix with the variables replaced
 Eigen::MatrixXcd replaceVariables(std::vector<std::vector<Poly>>& momentMatrix, const std::vector<Mon>& variables, const std::vector<std::complex<double>>& varVals);
+Eigen::MatrixXcd replaceVariables(std::vector<std::vector<Poly>>& momentMatrix, const std::map<Mon, std::complex<double>>& varVals);
 
 // Get the eigenvalues and vectors of a matrix after replacement
 void getEigens(std::vector<std::vector<Poly>>& momentMatrix, const std::vector<Mon>& variables, const std::vector<std::complex<double>>& varVals, std::vector<std::vector<std::complex<double>>>& eigenvectors, std::vector<std::complex<double>>& eigenvalues);

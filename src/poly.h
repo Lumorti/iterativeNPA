@@ -114,8 +114,8 @@ public:
     Poly reduced();
 
     // Remove any zero terms from this polynomial
-    void clean();
-    Poly cleaned() const;
+    void clean(double tol = 1e-10);
+    Poly cleaned(double tol = 1e-10) const;
 
     // Pretty print
     friend std::ostream& operator<<(std::ostream& os, const Poly& p);
