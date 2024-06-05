@@ -389,7 +389,7 @@ double rand(double min, double max) {
 }
 
 // Convert a primal SDP problem to a dual problem
-void primalToDual(Poly& objective, std::vector<std::vector<std::vector<Poly>>>& momentMatrices, std::vector<Poly>& constraintsZero, std::vector<Poly>& constraintsPositive) {
+void primalToDual(Poly& objective, std::vector<std::vector<std::vector<Poly>>>& momentMatrices, std::vector<Poly>& constraintsZero, std::vector<Poly>& constraintsPositive, bool variableObjective) {
 
     // First: put into into standard SDP form
     // min C.X s.t. A.X = b, X >= 0
@@ -488,7 +488,12 @@ void primalToDual(Poly& objective, std::vector<std::vector<std::vector<Poly>>>& 
     for (int i=0; i<matSize; i++) {
         for (int j=i; j<matSize; j++) {
             if (std::abs(C[i][j]) > 1e-10) {
-                newMomentMat[i][j][Mon()] = C[i][j];
+                // TODO new vars
+                if (variableObjective) {
+                    newObjective[Mon("<D" + std::to_string(As.size()) + ">")] = C[i][j];
+                } else {
+                    newMomentMat[i][j][Mon()] = C[i][j];
+                }
             }
             for (int k=0; k<As.size(); k++) {
                 if (std::abs(As[k][i][j]) > 1e-10) {

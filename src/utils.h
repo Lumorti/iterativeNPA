@@ -43,5 +43,5 @@ std::vector<Mon> toVector(std::set<Mon> s);
 double rand(double min, double max);
 
 // Convert a primal SDP problem to a dual problem
-void primalToDual(Poly& objective, std::vector<std::vector<std::vector<Poly>>>& momentMatrices, std::vector<Poly>& constraintsZero, std::vector<Poly>& constraintsPositive);
+void primalToDual(Poly& objective, std::vector<std::vector<std::vector<Poly>>>& momentMatrices, std::vector<Poly>& constraintsZero, std::vector<Poly>& constraintsPositive, bool variableObjective=false);
 

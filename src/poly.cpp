@@ -691,9 +691,12 @@ std::complex<double> Poly::eval(std::vector<std::pair<Mon, std::complex<double>>
 // Evaluate, given a list of variables and values
 std::complex<double> Poly::eval(std::map<Mon, std::complex<double>>& vals) {
     std::complex<double> toReturn = 0;
-    vals[Mon()] = 1;
     for (auto& term : polynomial) {
-        toReturn += term.second * vals[term.first];
+        if (term.first.isConstant()) {
+            toReturn += term.second;
+        } else {
+            toReturn += term.second * vals[term.first];
+        }
     }
     return toReturn;
 }

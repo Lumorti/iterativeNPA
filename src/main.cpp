@@ -194,6 +194,17 @@ int main(int argc, char* argv[]) {
     std::vector<Poly> constraintsZero;
     std::vector<Poly> constraintsPositive;
 
+    // If using the dual TODO
+    if (useDual) {
+        if (verbosity >= 2) {
+            std::cout << "Primal objective: " << std::endl;
+            std::cout << objective << std::endl << std::endl;
+            std::cout << "Primal moment matrix: " << std::endl;
+            std::cout << momentMatrices[0] << std::endl << std::endl;
+        }
+        primalToDual(objective, momentMatrices, constraintsZero, constraintsPositive);
+    }
+
     // The idea of using the dual to find cons that aren't in level 1 TODO
     if (testing == 1) {
 
@@ -215,13 +226,15 @@ int main(int argc, char* argv[]) {
             std::cout << "L1 solution: " << std::endl;
             std::cout << X << std::endl << std::endl;
 
+            // The coefficients of the original objective need to be variables in the dual TODO
+
             // Solve the dual
             Poly objectiveDual = objective;
             std::vector<std::vector<std::vector<Poly>>> momentMatricesL2Dual = momentMatricesL2;
             std::vector<Poly> constraintsZeroDual = constraintsZero;
             std::vector<Poly> constraintsPositiveDual = constraintsPositive;
             std::map<Mon, std::complex<double>> varValsL2;
-            primalToDual(objectiveDual, momentMatricesL2Dual, constraintsZeroDual, constraintsPositiveDual);
+            primalToDual(objectiveDual, momentMatricesL2Dual, constraintsZeroDual, constraintsPositiveDual, true);
             objectiveDual = Poly();
             for (int i=0; i<X.rows(); i++) {
                 for (int j=0; j<X.cols(); j++) {
@@ -312,7 +325,8 @@ int main(int argc, char* argv[]) {
 
     if (testing == 4) {
 
-        double sol = solveOptim(objective, constraintsPositive, momentMatrices[0]);
+        double sol = solveOptim(objective, constraintsPositive, momentMatrices[0], verbosity);
+        return 0;
 
     }
 
@@ -429,17 +443,6 @@ int main(int argc, char* argv[]) {
         //momentMatrices = {};
 
     //}
-
-    // If using the dual TODO
-    if (useDual) {
-        if (verbosity >= 2) {
-            std::cout << "Primal objective: " << std::endl;
-            std::cout << objective << std::endl << std::endl;
-            std::cout << "Primal moment matrix: " << std::endl;
-            std::cout << momentMatrices[0] << std::endl << std::endl;
-        }
-        primalToDual(objective, momentMatrices, constraintsZero, constraintsPositive);
-    }
 
     if (testing == 2) {
 
