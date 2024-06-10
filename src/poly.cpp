@@ -380,7 +380,13 @@ Poly Poly::reduced() {
 std::ostream& operator<<(std::ostream& os, const Poly& p) {
 
     // Check if it's zero
-    if (p.size() == 0 || (p.isConstant()&& std::abs(p[Mon()]) < zeroTol)) {
+    bool allZero = true;
+    for (auto& term : p.polynomial) {
+        if (std::abs(term.second) > zeroTol) {
+            allZero = false;
+        }
+    }
+    if (allZero) {
         os << "0";
         return os;
     }
@@ -665,6 +671,16 @@ bool Poly::contains(const Mon mon) const {
     return polynomial.find(mon) != polynomial.end();
 }
 
+// Check if a polynomial has a char
+bool Poly::contains(const char letter) const {
+    for (auto& term : polynomial) {
+        if (term.first.contains(letter)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 // If asking for just the first monomial
 std::complex<double>& Poly::getValue() {
     return polynomial.begin()->second;
@@ -765,5 +781,11 @@ Poly operator*(const Mon& mon, const Poly& p) {
     return toReturn;
 }
 
-
+// Mon multiplied by a complex number makes a poly
+Poly operator*(const Mon& mon, const std::complex<double>& coeff) {
+    return Poly(coeff, mon);
+}
+Poly operator*(const std::complex<double>& coeff, const Mon& mon) {
+    return Poly(coeff, mon);
+}
 

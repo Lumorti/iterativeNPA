@@ -240,6 +240,11 @@ double solveMOSEK(Poly obj, std::vector<std::vector<std::vector<Poly>>>& psd, st
     // The one variable should be fixed
     M->constraint(xM->index(oneIndex), mosek::fusion::Domain::equalsTo(1.0));
 
+    // Constraint the norm to be less than the first index
+    std::vector<double> scalingVec(variables.size(), 1);
+    scalingVec[0] = 100;
+    M->constraint(mosek::fusion::Expr::mulElm(xM, monty::new_array_ptr<double>(scalingVec)), mosek::fusion::Domain::inQCone());
+
     // The matrix of this should be PSD
     for (size_t k=0; k<indicesPSDPerMat.size(); k++) {
         M->constraint(

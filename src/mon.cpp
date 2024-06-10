@@ -376,5 +376,15 @@ bool Mon::isConstant() const {
     return size() == 0;
 }
 
+// Check if it contains a specific letter
+bool Mon::contains(char letter) const {
+    for (size_t i=0; i<monomial.size(); i++) {
+        if (monomial[i].first == letter) {
+            return true;
+        }
+    }
+    return false;
+}
+
 
     

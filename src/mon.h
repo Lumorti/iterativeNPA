@@ -82,5 +82,8 @@ public:
     // Check if the monomial is constant
     bool isConstant() const;
 
+    // Check if contains a specific letter
+    bool contains(char letter) const;
+
 };
 

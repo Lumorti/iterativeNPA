@@ -216,30 +216,43 @@ int main(int argc, char* argv[]) {
         // Keep iterating, for now just a fixed number of times
         for (int iter=0; iter<maxIters; iter++) {
 
-            // Get the L1 solution
+            // Get the L1 primal solution
             std::map<Mon, std::complex<double>> varValsL1;
             std::vector<std::vector<std::vector<Poly>>> momentMatricesL1 = generateAllMomentMatrices(bellFunc, {}, 1, verbosity);
-            std::vector<std::vector<std::vector<Poly>>> momentMatricesL2 = generateAllMomentMatrices(bellFunc, {}, 2, verbosity);
+            std::vector<std::vector<std::vector<Poly>>> momentMatricesL2 = generateAllMomentMatrices(bellFunc, {}, level, verbosity);
             double resL1 = solveMOSEK(objective, momentMatricesL1, constraintsZero, constraintsPositive, verbosity, {-1, 1}, &varValsL1);
-            Eigen::MatrixXcd X = replaceVariables(momentMatricesL1[0], varValsL1);
+            Eigen::MatrixXcd Y = replaceVariables(momentMatricesL1[0], varValsL1);
             std::cout << "L1 result: " << resL1 << std::endl;
             std::cout << "L1 solution: " << std::endl;
-            std::cout << X << std::endl << std::endl;
+            std::cout << Y.real() << std::endl << std::endl;
 
-            // The coefficients of the original objective need to be variables in the dual TODO
-
-            // Solve the dual
-            Poly objectiveDual = objective;
+            // Solve the L2 dual
+            //Poly objectiveDual = objective;
+            Poly objectiveDual;
+            for (auto& mon : varValsL1) {
+                objectiveDual += Poly(mon.first);
+            }
             std::vector<std::vector<std::vector<Poly>>> momentMatricesL2Dual = momentMatricesL2;
             std::vector<Poly> constraintsZeroDual = constraintsZero;
             std::vector<Poly> constraintsPositiveDual = constraintsPositive;
-            std::map<Mon, std::complex<double>> varValsL2;
             primalToDual(objectiveDual, momentMatricesL2Dual, constraintsZeroDual, constraintsPositiveDual, true);
             objectiveDual = Poly();
-            for (int i=0; i<X.rows(); i++) {
-                for (int j=0; j<X.cols(); j++) {
-                    if (std::abs(X(i,j)) > 1e-10) {
-                        objectiveDual -= Poly(X(i,j) * momentMatricesL2Dual[0][i][j]);
+            //for (int i=0; i<Y.rows(); i++) {
+                //for (int j=0; j<Y.cols(); j++) {
+                    //if (std::abs(Y(i,j)) > 1e-10) {
+                        //objectiveDual -= Y(i,j) * momentMatricesL2Dual[0][i][j];
+                    //}
+                //}
+            //}
+            for (int i=0; i<momentMatricesL1[0].size(); i++) {
+                for (int j=0; j<momentMatricesL1[0][i].size(); j++) {
+                    if (momentMatricesL2Dual[0][i][j].contains('E')) {
+                        for (auto& mon : momentMatricesL2Dual[0][i][j]) {
+                            if (mon.first.contains('E')) {
+                                objectiveDual -= Y(i,j) * mon.first;
+                                break;
+                            }
+                        }
                     }
                 }
             }
@@ -247,28 +260,39 @@ int main(int argc, char* argv[]) {
             std::cout << momentMatricesL2Dual[0] << std::endl << std::endl;
             std::cout << "Dual objective: " << std::endl;
             std::cout << objectiveDual << std::endl << std::endl;
-            double resL2 = solveMOSEK(objectiveDual, momentMatricesL2Dual, constraintsZeroDual, constraintsPositiveDual, verbosity, {-10, 10}, &varValsL2);
-            Eigen::MatrixXcd Y = replaceVariables(momentMatricesL2Dual[0], varValsL2);
+            std::map<Mon, std::complex<double>> varValsL2;
+            std::pair<int,int> varBoundsL2 = {-10000, 10000};
+            double resL2 = solveMOSEK(objectiveDual, momentMatricesL2Dual, constraintsZeroDual, constraintsPositiveDual, verbosity, varBoundsL2, &varValsL2);
+            Eigen::MatrixXcd P = replaceVariables(momentMatricesL2Dual[0], varValsL2);
             std::cout << "L2 result: " << resL2 << std::endl;
             std::cout << "L2 solution: " << std::endl;
-            std::cout << Y << std::endl << std::endl;
+            std::cout << P.real() << std::endl << std::endl;
 
             // Generate the new constraint
             Poly newCon;
-            for (int i=0; i<momentMatrices[0].size(); i++) {
-                for (int j=0; j<momentMatrices[0][i].size(); j++) {
-                    newCon += Poly(X(i,j) * momentMatricesL2Dual[0][i][j]);
+            for (int i=0; i<momentMatricesL1[0].size(); i++) {
+                for (int j=0; j<momentMatricesL1[0][i].size(); j++) {
+                    if (momentMatricesL2Dual[0][i][j].contains('E')) {
+                        for (auto& mon : momentMatricesL2Dual[0][i][j]) {
+                            if (mon.first.contains('E')) {
+                                newCon += varValsL2[mon.first] * momentMatrices[0][i][j];
+                                break;
+                            }
+                        }
+                    }
+                    //newCon += P(i,j) * momentMatricesL1[0][i][j];
                 }
             }
             std::cout << "New constraint: " << std::endl;
             std::cout << newCon << std::endl << std::endl;
 
-            std::cout << "New con evalled: " << newCon.eval(varValsL2) << std::endl;
+            std::cout << "New con evalled: " << newCon.eval(varValsL1) << std::endl;
 
-            constraintsPositiveDual.push_back(newCon);
+            constraintsPositive.push_back(newCon);
 
             // Solve again
-            double resL2Again = solveMOSEK(objectiveDual, momentMatricesL2Dual, constraintsZeroDual, constraintsPositiveDual, verbosity, {-10, 10}, &varValsL2);
+            double resL1Again = solveMOSEK(objective, momentMatricesL1, constraintsZero, constraintsPositive, verbosity, {-1, 1});
+            std::cout << "Result after adding new con: " << resL1Again << std::endl;
 
         }
 

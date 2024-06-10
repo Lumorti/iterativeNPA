@@ -147,6 +147,9 @@ public:
     // Check if a monomial is in the polynomial
     bool contains(const Mon mon) const;
 
+    // Check if a char is in the polynomial
+    bool contains(const char letter) const;
+
     // Cycle each term such that a monomial is at the end
     void cycleTo(char variable, int index);
     void cycleToAndRemove(char variable, int index);
@@ -158,4 +161,8 @@ public:
     Poly applyMap(std::map<Mon, Mon> map);
 
 };
+
+// Monomial multiplied by a number is a poly
+Poly operator*(const Mon& mon, const std::complex<double>& coeff);
+Poly operator*(const std::complex<double>& coeff, const Mon& mon);
 

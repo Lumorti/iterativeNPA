@@ -399,7 +399,7 @@ void primalToDual(Poly& objective, std::vector<std::vector<std::vector<Poly>>>& 
     std::vector<std::vector<double>> C = std::vector<std::vector<double>>(matSize, std::vector<double>(matSize, 0));
     std::set<Mon> monsUsed;
     for (int j=0; j<momentMatrices[0].size(); j++) {
-        for (int k=j+1; k<momentMatrices[0][j].size(); k++) {
+        for (int k=0; k<j; k++) {
             Mon key = momentMatrices[0][j][k].getKey();
             if (!monsUsed.count(key)) {
                 C[j][k] = -std::real(objective[key]) / 2;
@@ -408,7 +408,6 @@ void primalToDual(Poly& objective, std::vector<std::vector<std::vector<Poly>>>& 
             }
         }
     }
-    //std::cout << C << std::endl; // TODO
 
     // Define the A matrices and b vector
     std::vector<std::vector<std::vector<double>>> As;
@@ -468,8 +467,6 @@ void primalToDual(Poly& objective, std::vector<std::vector<std::vector<Poly>>>& 
             if (somethingFound) {
                 As.push_back(A);
                 b.push_back(bVal);
-                //std::cout << A << std::endl; // TODO
-                //std::cout << bVal << std::endl; // TODO
             }
 
         }
@@ -485,12 +482,15 @@ void primalToDual(Poly& objective, std::vector<std::vector<std::vector<Poly>>>& 
 
     // Convert the objective to the dual constraints C-\sum_i y_i A_i >= 0
     std::vector<std::vector<Poly>> newMomentMat(matSize, std::vector<Poly>(matSize, Poly()));
+    int newVarInd = b.size();
     for (int i=0; i<matSize; i++) {
         for (int j=i; j<matSize; j++) {
             if (std::abs(C[i][j]) > 1e-10) {
                 // TODO new vars
                 if (variableObjective) {
-                    newObjective[Mon("<D" + std::to_string(As.size()) + ">")] = C[i][j];
+                    Mon newMon("<E" + std::to_string(newVarInd) + ">");
+                    newMomentMat[i][j] = Poly(newMon);
+                    newVarInd++;
                 } else {
                     newMomentMat[i][j][Mon()] = C[i][j];
                 }
@@ -506,18 +506,6 @@ void primalToDual(Poly& objective, std::vector<std::vector<std::vector<Poly>>>& 
     // We don't have any linear constraints
     constraintsZero = {};
     constraintsPositive = {};
-
-    // For any polynomial longer than 1 in the matrix, create a new var TODO
-    //int nextVarIndex = As.size();
-    //for (int i=0; i<matSize; i++) {
-        //for (int j=i; j<matSize; j++) {
-            //if (newMomentMat[i][j].size() > 1) {
-                //constraintsZero.push_back(newMomentMat[i][j] - Poly("<D" + std::to_string(nextVarIndex) + ">"));
-                //newMomentMat[i][j] = Poly("<D" + std::to_string(nextVarIndex) + ">");
-                //nextVarIndex++;
-            //}
-        //}
-    //}
 
     // Symmetrize the matrix
     for (int i=0; i<matSize; i++) {
