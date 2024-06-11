@@ -63,7 +63,7 @@ Poly::Poly(std::string asString) {
     for (size_t i=0; i<asString.size(); i++) {
 
         // If finished a monomial
-        if (i > 0 && asString[i] == '>') {
+        if (i > 0 && (asString[i] == '>' || ((asString[i] == '+' || asString[i] == '-') && asString[i-1] != '>'))) {
 
             // Ensure the coefficient is convertable
             if (currentCoefficient == "" || currentCoefficient == "+") {
