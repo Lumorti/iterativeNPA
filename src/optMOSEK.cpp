@@ -1,4 +1,4 @@
-#include "mosek.h"
+#include "optMOSEK.h"
 #include "utils.h"
 #include "printing.h"
 #include <iostream>

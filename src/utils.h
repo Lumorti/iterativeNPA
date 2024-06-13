@@ -45,3 +45,6 @@ double rand(double min, double max);
 // Convert a primal SDP problem to a dual problem
 void primalToDual(Poly& objective, std::vector<std::vector<std::vector<Poly>>>& momentMatrices, std::vector<Poly>& constraintsZero, std::vector<Poly>& constraintsPositive, bool variableObjective=false);
 
+// Convert from sparse to compressed column format
+void toCC(std::vector<int>& ARows, std::vector<int>& ACols, std::vector<double>& AVals, int numCols);
+

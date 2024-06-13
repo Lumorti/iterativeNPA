@@ -9,8 +9,9 @@
 #include "poly.h"
 #include "utils.h"
 #include "mon.h"
-#include "mosek.h"
-#include "optim.h"
+#include "optMOSEK.h"
+#include "optSCS.h"
+#include "optOptim.h"
 
 // Generic entry function
 int main(int argc, char* argv[]) {
@@ -32,6 +33,7 @@ int main(int argc, char* argv[]) {
     double startingPenalty = 1e5;
     int numPenalties = 5;
     bool use01 = false;
+    std::string solver = "MOSEK";
     std::string seed = "";
     std::string problemName = "CHSH";
     std::vector<std::string> extraMoments;
@@ -57,6 +59,10 @@ int main(int argc, char* argv[]) {
         } else if (argAsString == "-01") {
             use01 = true;
 
+        // If told to use SCS
+        } else if (argAsString == "-C") {
+            solver = "SCS";
+
         // I3322
         // l1 (7x7) = 5.5
         // l2 (37x37) = 5.00379
@@ -69,7 +75,7 @@ int main(int argc, char* argv[]) {
             }
             problemName = "I3322";
 
-        // Randomized version of the above TODO
+        // Randomized version of the above
         // for -S 1
         // l1: 3.52733
         // l2: 3.37212 (0.06s)
@@ -141,6 +147,7 @@ int main(int argc, char* argv[]) {
             std::cout << "  -e <str>        Add an extra moment to the top row" << std::endl;
             std::cout << "  -h              Display this help message" << std::endl;
             std::cout << "  -D              Use the dual of the problem" << std::endl;
+            std::cout << "  -C              Use SCS to solve rather than MOSEK" << std::endl;
             std::cout << "  -01             Use 0/1 output instead of -1/1" << std::endl;
             return 0;
 
@@ -607,7 +614,12 @@ int main(int argc, char* argv[]) {
     if (useDual) {
         varBounds = {-10000, 10000};
     }
-    double res = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, varBounds);
+    double res = 0;
+    if (solver == "MOSEK") {
+        res = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, varBounds);
+    } else if (solver == "SCS") {
+        res = solveSCS(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, varBounds);
+    }
     std::cout << "Result: " << res << std::endl;
 
     // If I3322, convert to the 0/1 version too
