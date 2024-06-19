@@ -519,3 +519,51 @@ void primalToDual(Poly& objective, std::vector<std::vector<std::vector<Poly>>>& 
     objective = newObjective;
 
 }
+
+
+// Convert from sparse to compressed column format
+// https://people.sc.fsu.edu/~jburkardt/data/cc/cc.html
+void toCC(std::vector<int>& ARows, std::vector<int>& ACols, std::vector<double>& AVals, int numCols) {
+
+    // If empty, do nothing
+    if (ARows.size() == 0) {
+        return;
+    }
+
+    // The arrays to fill
+    std::vector<int> colPtrs(numCols+1, AVals.size());
+    std::vector<int> rowIndices;
+    std::vector<double> values;
+
+    // Sort the vals and rows by columns
+    std::vector<std::tuple<int, int, double>> vals;
+    for (size_t i=0; i<ARows.size(); i++) {
+        vals.push_back(std::make_tuple(ACols[i], ARows[i], AVals[i]));
+    }
+    std::sort(vals.begin(), vals.end());
+
+    // Fill the arrays
+    for (int i=0; i<int(vals.size()); i++) {
+        rowIndices.push_back(std::get<1>(vals[i]));
+        values.push_back(std::get<2>(vals[i]));
+        if (i < colPtrs[std::get<0>(vals[i])]) {
+            colPtrs[std::get<0>(vals[i])] = i;
+        }
+    }
+
+    // Anything not set should be the max
+    for (int i=0; i<numCols+1; i++) {
+        if (colPtrs[i] == -1) {
+            colPtrs[i] = rowIndices.size();
+        }
+    }
+
+    // Set the output
+    ARows = rowIndices;
+    ACols = colPtrs;
+    AVals = values;
+
+}
+
+
+

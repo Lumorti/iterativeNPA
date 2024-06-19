@@ -9,11 +9,15 @@
 #include "poly.h"
 #include "utils.h"
 #include "mon.h"
-#include "mosek.h"
-#include "optim.h"
+#include "optMOSEK.h"
+#include "optSCS.h"
+#include "optOptim.h"
 
 // Generic entry function
 int main(int argc, char* argv[]) {
+
+    // Assume random seed unless later set
+    srand(time(NULL));
 
     // Define the Bell scenario
     int numOutcomesA = 2;
@@ -29,6 +33,7 @@ int main(int argc, char* argv[]) {
     double startingPenalty = 1e5;
     int numPenalties = 5;
     bool use01 = false;
+    std::string solver = "MOSEK";
     std::string seed = "";
     std::string problemName = "CHSH";
     std::vector<std::string> extraMoments;
@@ -54,11 +59,14 @@ int main(int argc, char* argv[]) {
         } else if (argAsString == "-01") {
             use01 = true;
 
+        // If told to use SCS
+        } else if (argAsString == "-C") {
+            solver = "SCS";
+
         // I3322
         // l1 (7x7) = 5.5
-        // l2 (28x28) = 5.00612
-        // l3 (88x88) = 5.0035
-        // l4 (244x244) = 5.0035
+        // l2 (37x37) = 5.00379
+        // l3 (253x253) = 5.0035
         } else if (argAsString == "--I3322" || argAsString == "--i3322") {
             if (use01) {
                 bellFunc = Poly("-<A2>-<B1>-2<B2>+<A1B1>+<A1B2>+<A2B1>+<A2B2>-<A1B3>+<A2B3>-<A3B1>+<A3B2>");
@@ -66,6 +74,17 @@ int main(int argc, char* argv[]) {
                 bellFunc = Poly("<A1>-<A2>+<B1>-<B2>-<A1B1>+<A1B2>+<A2B1>-<A2B2>+<A1B3>+<A2B3>+<A3B1>+<A3B2>");
             }
             problemName = "I3322";
+
+        // Randomized version of the above
+        // for -S 1
+        // l1: 3.52733
+        // l2: 3.37212 (0.06s)
+        } else if (argAsString == "--R3322" || argAsString == "--r3322") {
+            bellFunc = Poly("<A1>-<A2>+<B1>-<B2>-<A1B1>+<A1B2>+<A2B1>-<A2B2>+<A1B3>+<A2B3>+<A3B1>+<A3B2>");
+            for (auto term : bellFunc) {
+                bellFunc[term.first] = rand(-1, 1);
+            }
+            problemName = "R3322";
 
         // Set the level
         } else if (argAsString == "-l") {
@@ -85,6 +104,7 @@ int main(int argc, char* argv[]) {
         // Set the seed
         } else if (argAsString == "-S") {
             seed = std::string(argv[i+1]);
+            srand(std::stoi(seed));
             i++;
 
         // Set the sub level
@@ -127,6 +147,7 @@ int main(int argc, char* argv[]) {
             std::cout << "  -e <str>        Add an extra moment to the top row" << std::endl;
             std::cout << "  -h              Display this help message" << std::endl;
             std::cout << "  -D              Use the dual of the problem" << std::endl;
+            std::cout << "  -C              Use SCS to solve rather than MOSEK" << std::endl;
             std::cout << "  -01             Use 0/1 output instead of -1/1" << std::endl;
             return 0;
 
@@ -152,24 +173,8 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    // If the seed isn't set
-    if (seed == "") {
-        srand(time(NULL));
-    } else {
-        srand(std::stoi(seed));
-    }
-
     // Define the moment matrix
     std::vector<std::vector<std::vector<Poly>>> momentMatrices = generateAllMomentMatrices(bellFunc, {}, level, verbosity);
-    if (verbosity >= 1) {
-        int largestMomentMatrix = 0;
-        for (int i=0; i<momentMatrices.size(); i++) {
-            if (momentMatrices[i].size() > largestMomentMatrix) {
-                largestMomentMatrix = momentMatrices[i].size();
-            }
-        }
-        std::cout << "Largest moment matrix has size " << largestMomentMatrix << std::endl;
-    }
 
     // If told to add extra to the top row
     if (extraMoments.size() > 0) {
@@ -194,7 +199,7 @@ int main(int argc, char* argv[]) {
     std::vector<Poly> constraintsZero;
     std::vector<Poly> constraintsPositive;
 
-    // If using the dual TODO
+    // If using the dual
     if (useDual) {
         if (verbosity >= 2) {
             std::cout << "Primal objective: " << std::endl;
@@ -208,91 +213,126 @@ int main(int argc, char* argv[]) {
     // The idea of using the dual to find cons that aren't in level 1 TODO
     if (testing == 1) {
 
-        std::cout << "Primal moment matrix: " << std::endl;
-        std::cout << momentMatrices[0] << std::endl << std::endl;
-        std::cout << "Primal objective: " << std::endl;
-        std::cout << objective << std::endl << std::endl;
+        // Generate the moment matrices
+        std::vector<std::vector<std::vector<Poly>>> momentMatricesL1 = generateAllMomentMatrices(bellFunc, {}, 1, verbosity);
+        std::vector<std::vector<std::vector<Poly>>> momentMatricesL2 = generateAllMomentMatrices(bellFunc, {}, std::max(level, 2), verbosity);
+
+        // Test the level 2 case
+        std::map<Mon, std::complex<double>> varValsL2OG;
+        double resL2OG = solveMOSEK(objective, momentMatricesL2, constraintsZero, constraintsPositive, verbosity-1, {-1, 1}, &varValsL2OG);
 
         // Keep iterating, for now just a fixed number of times
+        double prevRes = 0;
         for (int iter=0; iter<maxIters; iter++) {
 
             // Get the L1 primal solution
             std::map<Mon, std::complex<double>> varValsL1;
-            std::vector<std::vector<std::vector<Poly>>> momentMatricesL1 = generateAllMomentMatrices(bellFunc, {}, 1, verbosity);
-            std::vector<std::vector<std::vector<Poly>>> momentMatricesL2 = generateAllMomentMatrices(bellFunc, {}, level, verbosity);
-            double resL1 = solveMOSEK(objective, momentMatricesL1, constraintsZero, constraintsPositive, verbosity, {-1, 1}, &varValsL1);
+            double resL1 = solveMOSEK(objective, momentMatricesL1, constraintsZero, constraintsPositive, verbosity-1, {-1, 1}, &varValsL1);
             Eigen::MatrixXcd Y = replaceVariables(momentMatricesL1[0], varValsL1);
-            std::cout << "L1 result: " << resL1 << std::endl;
-            std::cout << "L1 solution: " << std::endl;
-            std::cout << Y.real() << std::endl << std::endl;
-
-            // Solve the L2 dual
-            //Poly objectiveDual = objective;
-            Poly objectiveDual;
-            for (auto& mon : varValsL1) {
-                objectiveDual += Poly(mon.first);
+            if (verbosity >= 1) {
+                std::cout << iter << " " << resL1 << " " << resL2OG << " " << (resL1 < resL2OG - 1e-6) << std::endl;
             }
-            std::vector<std::vector<std::vector<Poly>>> momentMatricesL2Dual = momentMatricesL2;
-            std::vector<Poly> constraintsZeroDual = constraintsZero;
-            std::vector<Poly> constraintsPositiveDual = constraintsPositive;
-            primalToDual(objectiveDual, momentMatricesL2Dual, constraintsZeroDual, constraintsPositiveDual, true);
-            objectiveDual = Poly();
-            //for (int i=0; i<Y.rows(); i++) {
-                //for (int j=0; j<Y.cols(); j++) {
-                    //if (std::abs(Y(i,j)) > 1e-10) {
-                        //objectiveDual -= Y(i,j) * momentMatricesL2Dual[0][i][j];
-                    //}
-                //}
-            //}
-            for (int i=0; i<momentMatricesL1[0].size(); i++) {
-                for (int j=0; j<momentMatricesL1[0][i].size(); j++) {
-                    if (momentMatricesL2Dual[0][i][j].contains('E')) {
-                        for (auto& mon : momentMatricesL2Dual[0][i][j]) {
-                            if (mon.first.contains('E')) {
-                                objectiveDual -= Y(i,j) * mon.first;
-                                break;
-                            }
-                        }
+
+            // Stop if nothing changes
+            if (std::abs(resL1-prevRes) < 1e-10) {
+                break;
+            }
+            prevRes = resL1;
+
+            // Debugging output
+            if (verbosity >= 3) {
+                std::cout << "Primal moment matrix: " << std::endl;
+                std::cout << momentMatricesL1[0] << std::endl << std::endl;
+                std::cout << "Primal objective: " << std::endl;
+                std::cout << objective << std::endl << std::endl;
+                std::cout << "L1 result: " << resL1 << std::endl;
+                std::cout << "L1 solution: " << std::endl;
+                std::cout << Y.real() << std::endl << std::endl;
+                std::cout << "L2 moment matrix: " << std::endl;
+                std::cout << momentMatricesL2[0] << std::endl << std::endl;
+            }
+
+            // Create a new moment matrix with plain variables
+            std::vector<std::vector<std::vector<Poly>>> newMomentMatrices = momentMatricesL2;
+            int nextVarInd = 0;
+            for (int i=0; i<momentMatricesL2[0].size(); i++) {
+                for (int j=i; j<momentMatricesL2[0][i].size(); j++) {
+                    newMomentMatrices[0][i][j] = Poly("<M" + std::to_string(nextVarInd) + ">");
+                    newMomentMatrices[0][j][i] = newMomentMatrices[0][i][j];
+                    nextVarInd++;
+                }
+            }
+
+            // Get the list of all variables
+            std::map<Mon, std::complex<double>> varValsAll = varValsL1;
+            for (int i=0; i<momentMatricesL2[0].size(); i++) {
+                for (int j=0; j<momentMatricesL2[0][i].size(); j++) {
+                    Mon key = momentMatricesL2[0][i][j].getKey();
+                    if (varValsAll.find(key) == varValsAll.end()) {
+                        varValsAll[key] = 0;
                     }
                 }
             }
-            std::cout << "Dual moment matrix: " << std::endl;
-            std::cout << momentMatricesL2Dual[0] << std::endl << std::endl;
-            std::cout << "Dual objective: " << std::endl;
-            std::cout << objectiveDual << std::endl << std::endl;
+
+            // The mapping from expectation values to P variables
+            std::map<Mon, int> monToInd;
+            std::map<int, Mon> indToMon;
+            int nextInd = 0;
+            for (auto mon : varValsAll) {
+                monToInd[mon.first] = nextInd;
+                indToMon[nextInd] = mon.first;
+                nextInd++;
+            }
+
+            // The new objective, min Y.P
+            Poly newObjective;
+            std::vector<Poly> newZeroCons(nextInd);
+            std::vector<Poly> newPosCons;
+            for (auto mon : varValsL1) {
+                int pInd = monToInd[mon.first];
+                newZeroCons[pInd] = Poly("<P" + std::to_string(pInd) + ">");
+                newObjective -= Poly(mon.second, "<P" + std::to_string(pInd) + ">");
+            }
+            for (int i=0; i<momentMatricesL2[0].size(); i++) {
+                for (int j=0; j<momentMatricesL2[0][i].size(); j++) {
+                    newZeroCons[monToInd[momentMatricesL2[0][i][j].getKey()]] -= newMomentMatrices[0][i][j];
+                }
+            }
+
+            // Debugging output
+            if (verbosity >= 3) {
+                std::cout << "P map: " << std::endl;
+                for (auto mon : varValsAll) {
+                    std::cout << mon.first << " -> " << monToInd[mon.first] << std::endl;
+                }
+                std::cout << "Objective sub:" << std::endl;
+                std::cout << newObjective << std::endl << std::endl;
+                std::cout << "Zero cons sub:" << std::endl;
+                std::cout << newZeroCons << std::endl << std::endl;
+                std::cout << "Moment matrix sub: " << std::endl;
+                std::cout << newMomentMatrices[0] << std::endl << std::endl;
+            }
+
+            // Solve the sub problem
             std::map<Mon, std::complex<double>> varValsL2;
-            std::pair<int,int> varBoundsL2 = {-10000, 10000};
-            double resL2 = solveMOSEK(objectiveDual, momentMatricesL2Dual, constraintsZeroDual, constraintsPositiveDual, verbosity, varBoundsL2, &varValsL2);
-            Eigen::MatrixXcd P = replaceVariables(momentMatricesL2Dual[0], varValsL2);
-            std::cout << "L2 result: " << resL2 << std::endl;
-            std::cout << "L2 solution: " << std::endl;
-            std::cout << P.real() << std::endl << std::endl;
+            double resL2 = solveMOSEK(newObjective, newMomentMatrices, newZeroCons, newPosCons, verbosity-1, {-100, 100}, &varValsL2);
+
+            // Stop if the new constraint isn't even negative
+            if (resL2 < 1e-10) {
+                break;
+            }
 
             // Generate the new constraint
             Poly newCon;
-            for (int i=0; i<momentMatricesL1[0].size(); i++) {
-                for (int j=0; j<momentMatricesL1[0][i].size(); j++) {
-                    if (momentMatricesL2Dual[0][i][j].contains('E')) {
-                        for (auto& mon : momentMatricesL2Dual[0][i][j]) {
-                            if (mon.first.contains('E')) {
-                                newCon += varValsL2[mon.first] * momentMatrices[0][i][j];
-                                break;
-                            }
-                        }
-                    }
-                    //newCon += P(i,j) * momentMatricesL1[0][i][j];
-                }
+            for (auto mon : varValsL1) {
+                newCon += Poly(varValsL2[Mon("<P" + std::to_string(monToInd[mon.first]) + ">")], mon.first);
             }
-            std::cout << "New constraint: " << std::endl;
-            std::cout << newCon << std::endl << std::endl;
-
-            std::cout << "New con evalled: " << newCon.eval(varValsL1) << std::endl;
-
+            newCon.clean();
             constraintsPositive.push_back(newCon);
-
-            // Solve again
-            double resL1Again = solveMOSEK(objective, momentMatricesL1, constraintsZero, constraintsPositive, verbosity, {-1, 1});
-            std::cout << "Result after adding new con: " << resL1Again << std::endl;
+            if (verbosity >= 2) {
+                std::cout << "New constraint: " << newCon << std::endl;
+                std::cout << "New con evalled: " << newCon.eval(varValsL1) << std::endl;
+            }
 
         }
 
@@ -536,6 +576,17 @@ int main(int argc, char* argv[]) {
 
     }
 
+    // Non-verbose output
+    if (verbosity >= 1) {
+        int largestMomentMatrix = 0;
+        for (int i=0; i<momentMatrices.size(); i++) {
+            if (momentMatrices[i].size() > largestMomentMatrix) {
+                largestMomentMatrix = momentMatrices[i].size();
+            }
+        }
+        std::cout << "Largest moment matrix has size " << largestMomentMatrix << std::endl;
+    }
+
     // Output the problem
     if (verbosity >= 2) {
         if (objective.size() > 0) {
@@ -563,7 +614,12 @@ int main(int argc, char* argv[]) {
     if (useDual) {
         varBounds = {-10000, 10000};
     }
-    double res = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, varBounds);
+    double res = 0;
+    if (solver == "MOSEK") {
+        res = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, varBounds);
+    } else if (solver == "SCS") {
+        res = solveSCS(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, varBounds);
+    }
     std::cout << "Result: " << res << std::endl;
 
     // If I3322, convert to the 0/1 version too

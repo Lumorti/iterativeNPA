@@ -4,7 +4,8 @@ CXXFLAGS=-fmax-errors=3 -O3 -march=native
 LIBSEIGEN= -I${EIGENHOME}
 LIBSMOSEK= -I${MSKHOME}/h -L${MSKHOME}/bin -Wl,-rpath-link,${MSKHOME}/bin -Wl,-rpath=${MSKHOME}/bin -lmosek64 -lfusion64
 LIBSOPTIM= -I${OPTIMHOME}/header_only_version/ 
-LIBS=$(LIBSEIGEN) $(LIBSMOSEK) $(LIBSOPTIM)
+LIBSSCS= -I${SCSHOME}/include/scs/ -L${SCSHOME}/lib/ -lscsdir
+LIBS=$(LIBSEIGEN) $(LIBSMOSEK) $(LIBSOPTIM) $(LIBSSCS)
 FILES=$(wildcard src/*.cpp)
 ASOBJ=$(FILES:.cpp=.o)
 
@@ -16,11 +17,14 @@ run: $(ASOBJ)
 src/main.o: src/main.cpp
 	$(CXX) $(CXXFLAGS) -c src/main.cpp -o src/main.o $(LIBSEIGEN) $(LIBSOPTIM)
 
-src/mosek.o: src/mosek.cpp src/mosek.h
-	$(CXX) $(CXXFLAGS) -c src/mosek.cpp -o src/mosek.o $(LIBSMOSEK) $(LIBSEIGEN)
+src/optMOSEK.o: src/optMOSEK.cpp src/optMOSEK.h
+	$(CXX) $(CXXFLAGS) -c src/optMOSEK.cpp -o src/optMOSEK.o $(LIBSMOSEK) $(LIBSEIGEN)
 
-src/optim.o: src/optim.cpp src/optim.h
-	$(CXX) $(CXXFLAGS) -c src/optim.cpp -o src/optim.o $(LIBSOPTIM) $(LIBSEIGEN)
+src/optOptim.o: src/optOptim.cpp src/optOptim.h
+	$(CXX) $(CXXFLAGS) -c src/optOptim.cpp -o src/optOptim.o $(LIBSOPTIM) $(LIBSEIGEN)
+
+src/optSCS.o: src/optSCS.cpp src/optSCS.h
+	$(CXX) $(CXXFLAGS) -c src/optSCS.cpp -o src/optSCS.o $(LIBSSCS) $(LIBSEIGEN)
 
 %.o: %.cpp %.h
 	$(CXX) $(CXXFLAGS) -c $< -o $@ $(LIBSEIGEN)

@@ -1,4 +1,4 @@
-#include "mosek.h"
+#include "optMOSEK.h"
 #include "utils.h"
 #include "printing.h"
 #include <iostream>
@@ -231,7 +231,9 @@ double solveMOSEK(Poly obj, std::vector<std::vector<std::vector<Poly>>>& psd, st
     }
 
     // Create the main variable vector
-    std::cout << "Bounds: " << varBounds.first << " " << varBounds.second << std::endl;
+    if (verbosity >= 3) {
+        std::cout << "Bounds: " << varBounds.first << " " << varBounds.second << std::endl;
+    }
     mosek::fusion::Variable::t xM = M->variable(variables.size(), mosek::fusion::Domain::inRange(varBounds.first, varBounds.second));
 
     // The objective function
@@ -241,9 +243,21 @@ double solveMOSEK(Poly obj, std::vector<std::vector<std::vector<Poly>>>& psd, st
     M->constraint(xM->index(oneIndex), mosek::fusion::Domain::equalsTo(1.0));
 
     // Constraint the norm to be less than the first index
-    std::vector<double> scalingVec(variables.size(), 1);
-    scalingVec[0] = 100;
-    M->constraint(mosek::fusion::Expr::mulElm(xM, monty::new_array_ptr<double>(scalingVec)), mosek::fusion::Domain::inQCone());
+    std::vector<int> boundedInds = {oneIndex};
+    std::vector<double> boundedCoeffs = {1.0};
+    bool foundP = false;
+    for (size_t i=0; i<variables.size(); i++) {
+        if (variables[i].contains('P')) {
+            foundP = true;
+            boundedInds.push_back(i);
+            boundedCoeffs.push_back(1.0);
+        }
+    }
+    if (foundP) {
+        auto indexM = monty::new_array_ptr<int>(boundedInds);
+        auto coeffsM = monty::new_array_ptr<double>(boundedCoeffs);
+        M->constraint(mosek::fusion::Expr::mulElm(coeffsM, xM->pick(indexM)), mosek::fusion::Domain::inQCone());
+    }
 
     // The matrix of this should be PSD
     for (size_t k=0; k<indicesPSDPerMat.size(); k++) {
