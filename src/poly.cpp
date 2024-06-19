@@ -28,6 +28,9 @@ Poly::Poly (std::map<Mon, std::complex<double>> poly) {
 Poly::Poly(std::pair<std::complex<double>, Mon> pair) {
     polynomial[pair.second] = pair.first;
 }
+Poly::Poly(std::pair<Mon, std::complex<double>> pair) {
+    polynomial[pair.first] = pair.second;
+}
 
 // If initialized from a coeff and a monomial
 Poly::Poly(std::complex<double> coeff, Mon mon) {
@@ -165,6 +168,22 @@ Poly& Poly::operator+=(const Poly& other) {
     }
     for (auto& mon : toRemove) {
         polynomial.erase(mon);
+    }
+    return *this;
+}
+
+// When summing in-place with a constant
+Poly& Poly::operator+=(const std::complex<double>& other) {
+    polynomial[Mon()] += other;
+    if (std::abs(polynomial[Mon()]) < zeroTol) {
+        polynomial.erase(Mon());
+    }
+    return *this;
+}
+Poly& Poly::operator+=(const double& other) {
+    polynomial[Mon()] += other;
+    if (std::abs(polynomial[Mon()]) < zeroTol) {
+        polynomial.erase(Mon());
     }
     return *this;
 }

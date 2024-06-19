@@ -24,6 +24,7 @@ public:
 
     // If initialized from a single coeff + monomial
     Poly(std::pair<std::complex<double>, Mon> pair);
+    Poly(std::pair<Mon, std::complex<double>> pair);
 
     // If initialized from a coeff and a monomial
     Poly(std::complex<double> coeff, Mon mon);
@@ -49,6 +50,8 @@ public:
 
     // When summing in-place
     Poly& operator+=(const Poly& other);
+    Poly& operator+=(const std::complex<double>& other);
+    Poly& operator+=(const double& other);
 
     // When subtracting two polynomials
     Poly operator-(const Poly& other);
