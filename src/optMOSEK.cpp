@@ -357,6 +357,28 @@ double solveMOSEK(Poly obj, std::vector<std::vector<std::vector<Poly>>>& psd, st
             int numPosEig = eigVals.size() - numZeroEig;
             std::cout << "Num zero eig: " << numZeroEig << std::endl;
             std::cout << "Num pos eig: " << numPosEig << std::endl;
+
+            // Output the eigenbasis
+            std::vector<std::vector<Poly>> newMomentMat;
+            Eigen::MatrixXd eigenVecsMat = Eigen::MatrixXd::Zero(A.rows(), A.cols());
+            Eigen::MatrixXd eigenValsMat = Eigen::MatrixXd::Zero(A.rows(), A.cols());
+            for (int i=0; i<eigVecs.size(); i++) {
+                Eigen::VectorXcd eigVec = Eigen::Map<Eigen::VectorXcd>(eigVecs[i].data(), eigVecs[i].size());
+                //std::cout << eigVals[i] << std::endl;
+                //std::cout << eigVec * eigVec.adjoint() << std::endl;
+                eigenVecsMat.col(i) = eigVec.real();
+                eigenValsMat(i,i) = eigVals[i].real();
+            }
+
+            Eigen::MatrixXd reconMat = eigenVecsMat * eigenValsMat * eigenVecsMat.inverse();
+            std::cout << "Reconstructed matrix:" << std::endl;
+            std::cout << reconMat << std::endl;
+
+
+            std::cout << "Reconstructed matrix:" << std::endl;
+            std::cout << reconMat << std::endl;
+
+
         }
 
         // Eval all of the constraints
