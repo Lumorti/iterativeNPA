@@ -33,6 +33,7 @@ int main(int argc, char* argv[]) {
     double startingPenalty = 1e5;
     int numPenalties = 5;
     bool use01 = false;
+    double stepSize = 0.001;
     std::string solver = "MOSEK";
     std::string seed = "";
     std::string problemName = "CHSH";
@@ -107,6 +108,11 @@ int main(int argc, char* argv[]) {
             srand(std::stoi(seed));
             i++;
 
+        // Set the step size
+        } else if (argAsString == "-A") {
+            stepSize = std::stod(argv[i+1]);
+            i++;
+
         // Set the sub level
         } else if (argAsString == "-s") {
             subLevel = std::stoi(argv[i+1]);
@@ -131,23 +137,24 @@ int main(int argc, char* argv[]) {
         } else if (argAsString == "-h" || argAsString == "--help") {
             std::cout << "Usage: " << argv[0] << " [options]" << std::endl;
             std::cout << "Options:" << std::endl;
-            std::cout << "  -a <num>        Number of outcomes for Alice" << std::endl;
-            std::cout << "  -b <num>        Number of outcomes for Bob" << std::endl;
+            std::cout << "  -a <int>        Number of outcomes for Alice" << std::endl;
+            std::cout << "  -b <int>        Number of outcomes for Bob" << std::endl;
             std::cout << "  --chsh          Use the CHSH scenario" << std::endl;
             std::cout << "  --I3322         Use the I3322 scenario" << std::endl;
-            std::cout << "  -l <num>        Level of the moment matrix" << std::endl;
-            std::cout << "  -s <num>        Sub-level of the moment matrix" << std::endl;
-            std::cout << "  -i <num>        Iteration limit" << std::endl;
-            std::cout << "  -n <num>        Number of moment matrices to sample" << std::endl;
+            std::cout << "  -l <int>        Level of the moment matrix" << std::endl;
+            std::cout << "  -s <int>        Sub-level of the moment matrix" << std::endl;
+            std::cout << "  -i <int>        Iteration limit" << std::endl;
+            std::cout << "  -n <int>        Number of moment matrices to sample" << std::endl;
             std::cout << "  -S <str>        Seed for the random number generator" << std::endl;
-            std::cout << "  -v <num>        Set the verbosity level" << std::endl;
-            std::cout << "  -p <num>        Set the starting penalty" << std::endl;
-            std::cout << "  -P <num>        Set the number of penalties to use" << std::endl;
+            std::cout << "  -v <int>        Set the verbosity level" << std::endl;
+            std::cout << "  -p <dbl>        Set the starting penalty" << std::endl;
+            std::cout << "  -P <int>        Set the number of penalties to use" << std::endl;
             std::cout << "  -t              Test the moment matrix" << std::endl;
             std::cout << "  -e <str>        Add an extra moment to the top row" << std::endl;
             std::cout << "  -h              Display this help message" << std::endl;
             std::cout << "  -D              Use the dual of the problem" << std::endl;
             std::cout << "  -C              Use SCS to solve rather than MOSEK" << std::endl;
+            std::cout << "  -A <dbl>        Set the step size" << std::endl;
             std::cout << "  -01             Use 0/1 output instead of -1/1" << std::endl;
             return 0;
 
@@ -355,35 +362,35 @@ int main(int argc, char* argv[]) {
         Eigen::FullPivLU<Eigen::MatrixXcd> lu(X);
         std::cout << "Rank: " << lu.rank() << " / " << X.rows() << std::endl;
 
-        std::cout << "Moment matrix: " << std::endl;
-        std::cout << momentMatrices[0] << std::endl;
+        //std::cout << "Moment matrix: " << std::endl;
+        //std::cout << momentMatrices[0] << std::endl;
 
 
-        std::cout << "Moment matrix with random values: " << std::endl;
-        std::cout << X << std::endl;
+        //std::cout << "Moment matrix with random values: " << std::endl;
+        //std::cout << X << std::endl;
 
         // Do Guassian elimination on matrix X
-        std::vector<std::vector<Poly>> newMat = momentMatrices[0];
-        for (int i=0; i<X.rows(); i++) {
-            for (int j=i+1; j<X.rows(); j++) {
-                std::complex<double> toMult = X(j,i) / X(i,i);
-                X.row(j) -= X.row(i) * toMult;
-                for (int k=0; k<X.cols(); k++) {
-                    newMat[j][k] -= newMat[i][k] * toMult;
-                }
-            }
-        }
+        //std::vector<std::vector<Poly>> newMat = momentMatrices[0];
+        //for (int i=0; i<X.rows(); i++) {
+            //for (int j=i+1; j<X.rows(); j++) {
+                //std::complex<double> toMult = X(j,i) / X(i,i);
+                //X.row(j) -= X.row(i) * toMult;
+                //for (int k=0; k<X.cols(); k++) {
+                    //newMat[j][k] -= newMat[i][k] * toMult;
+                //}
+            //}
+        //}
 
-        std::cout << "After GE: " << std::endl;
-        std::cout << X << std::endl;
+        //std::cout << "After GE: " << std::endl;
+        //std::cout << X << std::endl;
 
-        std::cout << "After GE: " << std::endl;
-        std::cout << newMat << std::endl;
+        //std::cout << "After GE: " << std::endl;
+        //std::cout << newMat << std::endl;
 
-        // Add the diagonals as positivity constraints
-        for (int i=0; i<X.rows(); i++) {
-            constraintsPositive.push_back(newMat[i][i]);
-        }
+        //// Add the diagonals as positivity constraints
+        //for (int i=0; i<X.rows(); i++) {
+            //constraintsPositive.push_back(newMat[i][i]);
+        //}
 
     }
 
@@ -508,67 +515,55 @@ int main(int argc, char* argv[]) {
 
     //}
 
+    // TODO some sort of randomized algorithm
     if (testing == 2) {
 
-        // Start from all zeros
-        std::map<Mon, std::complex<double>> startVals;
-        std::map<Mon, std::complex<double>> endVals;
-        for (int i=0; i<momentMatrices[0].size(); i++) {
-            for (int j=0; j<momentMatrices[0][i].size(); j++) {
-                std::cout << momentMatrices[0][i][j] << std::endl;
-                if (!momentMatrices[0][i][j].isConstant()) {
-                    if (i == j) {
-                        //startVals[momentMatrices[0][i][j].getKey()] = std::complex<double>(-1, 0);
-                        //endVals[momentMatrices[0][i][j].getKey()] = std::complex<double>(rand(0, 1), 0);
-                        startVals[momentMatrices[0][i][j].getKey()] = std::complex<double>(0, 0);
-                        endVals[momentMatrices[0][i][j].getKey()] = std::complex<double>(0, 0);
-                    } else {
-                        startVals[momentMatrices[0][i][j].getKey()] = std::complex<double>(0, 0);
-                        endVals[momentMatrices[0][i][j].getKey()] = std::complex<double>(rand(-1, 1), 0);
-                    }
-                }
-            }
-        }
-        //for (auto mon : objective) {
-            //if (!mon.first.isConstant()) {
-                //endVals[mon.first] = std::complex<double>(1, 0) * mon.second;
-            //}
-        //}
+        std::set<Mon> vars;
+        addVariables(vars, momentMatrices[0]);
 
-        double stepSize = 0.1;
+        std::map<Mon, std::complex<double>> varVals;
+        std::map<Mon, std::complex<double>> deltas;
+        for (auto& mon : vars) {
+            varVals[mon] = -1;
+        }
+
+        double prevObj = 0;
+        for (auto& mon : vars) {
+            deltas[mon] = rand(-1, 1) * stepSize;
+        }
         for (int i=0; i<maxIters; i++) {
 
-            std::map<Mon, std::complex<double>> varVals;
-            for (auto& mon : startVals) {
-                varVals[mon.first] = (startVals[mon.first] + endVals[mon.first]) / 2.0;
+            // Random perturbation
+            for (auto& mon : vars) {
+                varVals[mon] += deltas[mon];
             }
 
             // Check if X is positive
             Eigen::MatrixXcd X = replaceVariables(momentMatrices[0], varVals);
             Eigen::SelfAdjointEigenSolver<Eigen::MatrixXcd> es(X);
             double minEig = es.eigenvalues().minCoeff();
-            std::cout << X << std::endl;
             std::cout << "Min eig: " << minEig << std::endl;
             double newObjVal = objective.eval(varVals).real();
             std::cout << "Objective: " << newObjVal << std::endl;
 
-            if (minEig < 0) {
-                endVals = varVals;
-            } else {
-                startVals = varVals;
+            // Revert if bad
+            if (minEig < -1e-3) {
+                for (auto& mon : vars) {
+                    varVals[mon] -= deltas[mon];
+                }
+                for (auto& mon : vars) {
+                    deltas[mon] = rand(-1, 1) * stepSize;
+                }
+            } else if (newObjVal < prevObj) {
+                for (auto& mon : vars) {
+                    varVals[mon] -= deltas[mon];
+                }
+                for (auto& mon : vars) {
+                    deltas[mon] = -deltas[mon];
+                }
             }
 
-            //if (minEig < 0) {
-                //for (auto& mon : objective) {
-                    //varVals[mon.first] -= stepSize * mon.second;
-                //}
-                //stepSize *= 0.9;
-            //}
-
-            //// Travel in the direction of the objective
-            //for (auto& mon : objective) {
-                //varVals[mon.first] += stepSize * mon.second;
-            //}
+            prevObj = newObjVal;
 
         }
 
@@ -619,6 +614,9 @@ int main(int argc, char* argv[]) {
         res = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, varBounds);
     } else if (solver == "SCS") {
         res = solveSCS(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, varBounds);
+    }
+    if (useDual) {
+        res = -res;
     }
     std::cout << "Result: " << res << std::endl;
 

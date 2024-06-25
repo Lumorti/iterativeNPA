@@ -358,26 +358,36 @@ double solveMOSEK(Poly obj, std::vector<std::vector<std::vector<Poly>>>& psd, st
             std::cout << "Num zero eig: " << numZeroEig << std::endl;
             std::cout << "Num pos eig: " << numPosEig << std::endl;
 
-            // Output the eigenbasis
-            std::vector<std::vector<Poly>> newMomentMat;
-            Eigen::MatrixXd eigenVecsMat = Eigen::MatrixXd::Zero(A.rows(), A.cols());
-            Eigen::MatrixXd eigenValsMat = Eigen::MatrixXd::Zero(A.rows(), A.cols());
-            for (int i=0; i<eigVecs.size(); i++) {
-                Eigen::VectorXcd eigVec = Eigen::Map<Eigen::VectorXcd>(eigVecs[i].data(), eigVecs[i].size());
-                //std::cout << eigVals[i] << std::endl;
-                //std::cout << eigVec * eigVec.adjoint() << std::endl;
-                eigenVecsMat.col(i) = eigVec.real();
-                eigenValsMat(i,i) = eigVals[i].real();
-            }
+            // Get the SVD
+            //Eigen::JacobiSVD<Eigen::MatrixXd> svd(A.real(), Eigen::ComputeThinU | Eigen::ComputeThinV);
+            //Eigen::MatrixXd U = svd.matrixU();
+            //Eigen::MatrixXd vals = svd.singularValues().asDiagonal();
+            //Eigen::MatrixXd V = svd.matrixV();
 
-            Eigen::MatrixXd reconMat = eigenVecsMat * eigenValsMat * eigenVecsMat.inverse();
-            std::cout << "Reconstructed matrix:" << std::endl;
-            std::cout << reconMat << std::endl;
+            //// Reconstruction
+            //Eigen::MatrixXd reconMat = U * vals * V.transpose();
+            //std::cout << "U matrix:" << std::endl;
+            //std::cout << U << std::endl;
+            //std::cout << "Vals matrix:" << std::endl;
+            //std::cout << vals << std::endl;
+            //std::cout << "V matrix:" << std::endl;
+            //std::cout << V << std::endl;
+            //std::cout << "Reconstructed matrix:" << std::endl;
+            //std::cout << reconMat << std::endl;
 
-
-            std::cout << "Reconstructed matrix:" << std::endl;
-            std::cout << reconMat << std::endl;
-
+            //// Truncated SVD
+            //Eigen::MatrixXd smallerU = U.block(0, 0, U.cols(), numPosEig);
+            //Eigen::MatrixXd smallerVals = vals.block(0, 0, numPosEig, numPosEig);
+            //Eigen::MatrixXd smallerV = V.block(0, 0, V.cols(), numPosEig);
+            //std::cout << "Smaller U matrix:" << std::endl;
+            //std::cout << smallerU << std::endl;
+            //std::cout << "Smaller Vals matrix:" << std::endl;
+            //std::cout << smallerVals << std::endl;
+            //std::cout << "Smaller V matrix:" << std::endl;
+            //std::cout << smallerV << std::endl;
+            //Eigen::MatrixXd smallerMat = smallerU * smallerVals * smallerV.transpose();
+            //std::cout << "Smaller matrix:" << std::endl;
+            //std::cout << smallerMat << std::endl;
 
         }
 
