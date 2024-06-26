@@ -13,6 +13,22 @@
 #include "optSCS.h"
 #include "optOptim.h"
 
+// Define addition and subtraction of maps
+std::map<Mon, std::complex<double>> operator+(const std::map<Mon, std::complex<double>>& a, const std::map<Mon, std::complex<double>>& b) {
+    std::map<Mon, std::complex<double>> res = a;
+    for (auto& pair : b) {
+        res[pair.first] += pair.second;
+    }
+    return res;
+}
+std::map<Mon, std::complex<double>> operator-(const std::map<Mon, std::complex<double>>& a, const std::map<Mon, std::complex<double>>& b) {
+    std::map<Mon, std::complex<double>> res = a;
+    for (auto& pair : b) {
+        res[pair.first] -= pair.second;
+    }
+    return res;
+}
+
 // Generic entry function
 int main(int argc, char* argv[]) {
 
@@ -217,7 +233,7 @@ int main(int argc, char* argv[]) {
         primalToDual(objective, momentMatrices, constraintsZero, constraintsPositive);
     }
 
-    // The idea of using the dual to find cons that aren't in level 1 TODO
+    // The idea of using the dual to find cons that aren't in level 1
     if (testing == 1) {
 
         // Generate the moment matrices
@@ -515,56 +531,197 @@ int main(int argc, char* argv[]) {
 
     //}
 
-    // TODO some sort of randomized algorithm
+    // Go very far in the objective, then project back onto the set
     if (testing == 2) {
 
+        // Create new moment matrix and then add equalities
+        std::vector<std::vector<Poly>> newMomentMatrix = momentMatrices[0];
+        int newInd = 0;
+        for (int i=0; i<newMomentMatrix.size(); i++) {
+            for (int j=i; j<newMomentMatrix[i].size(); j++) {
+                newMomentMatrix[i][j] = Poly("<M" + std::to_string(newInd) + ">");
+                newMomentMatrix[j][i] = newMomentMatrix[i][j];
+                constraintsZero.push_back(momentMatrices[0][i][j] - newMomentMatrix[i][j]);
+                newInd++;
+            }
+        }
+        momentMatrices = {newMomentMatrix};
+
+        std::cout << "New moment matrix: " << std::endl;
+        std::cout << momentMatrices[0] << std::endl;
+        std::cout << "Zero constraints: " << std::endl;
+        for (auto con : constraintsZero) {
+            std::cout << con << std::endl;
+        }
+
+        // Get the list of variables
         std::set<Mon> vars;
         addVariables(vars, momentMatrices[0]);
+        for (auto con : constraintsZero) {
+            addVariables(vars, con);
+        }
+        if (vars.count(Mon()) > 0) {
+            vars.erase(Mon());
+        }
+        std::vector<Mon> varList(vars.begin(), vars.end());
 
+        // Starting point
         std::map<Mon, std::complex<double>> varVals;
-        std::map<Mon, std::complex<double>> deltas;
         for (auto& mon : vars) {
-            varVals[mon] = -1;
+            if (objective.contains(mon)) {
+                if (objective[mon].real() > 0) {
+                    varVals[mon] = 10000;
+                } else {
+                    varVals[mon] = -10000;
+                }
+            } else {
+                varVals[mon] = 0;
+            }
         }
 
-        double prevObj = 0;
-        for (auto& mon : vars) {
-            deltas[mon] = rand(-1, 1) * stepSize;
+        // The matrix defining the linear constraints
+        Eigen::MatrixXd A = Eigen::MatrixXd::Zero(constraintsZero.size(), varList.size());
+        Eigen::VectorXd b = Eigen::VectorXd::Zero(constraintsZero.size());
+        for (int i=0; i<constraintsZero.size(); i++) {
+            for (int j=0; j<varList.size(); j++) {
+                A(i, j) = constraintsZero[i][varList[j]].real();
+            }
+            b(i) = -constraintsZero[i][Mon()].real();
         }
-        for (int i=0; i<maxIters; i++) {
 
-            // Random perturbation
-            for (auto& mon : vars) {
-                varVals[mon] += deltas[mon];
+        if (verbosity >= 3) {
+            std::cout << "vars: " << std::endl;
+            for (int i=0; i<varList.size(); i++) {
+                std::cout << varList[i] << " " << varVals[varList[i]] << std::endl;
+            }
+            std::cout << "A: " << std::endl;
+            std::cout << A << std::endl;
+            std::cout << "b: " << std::endl;
+            std::cout << b << std::endl;
+        }
+
+        //for (int iter=0; iter<maxIters; iter++) {
+
+            //// Positive projection
+            //Eigen::MatrixXcd X = replaceVariables(momentMatrices[0], varVals);
+            //Eigen::SelfAdjointEigenSolver<Eigen::MatrixXcd> es(X);
+            //double minEig = es.eigenvalues().minCoeff();
+            //double newObjVal = objective.eval(varVals).real();
+            //Eigen::VectorXd eigVals = es.eigenvalues().real();
+            //Eigen::MatrixXd eigVecs = es.eigenvectors().real();
+            //Eigen::MatrixXd proj = Eigen::MatrixXd::Zero(X.rows(), X.cols());
+            //for (int i=0; i<eigVals.size(); i++) {
+                //if (eigVals(i) > 0) {
+                    //proj += eigVals(i) * eigVecs.col(i) * eigVecs.col(i).transpose();
+                //}
+            //}
+            //for (int i=0; i<proj.rows(); i++) {
+                //for (int j=i; j<proj.cols(); j++) {
+                    //varVals[momentMatrices[0][i][j].getKey()] = proj(i, j);
+                //}
+            //}
+
+            //// Linear projection
+            //Eigen::VectorXd x = Eigen::VectorXd::Zero(varList.size());
+            //for (int i=0; i<varList.size(); i++) {
+                //x(i) = varVals[varList[i]].real();
+            //}
+            //Eigen::VectorXd projX = x - A.transpose() * (A * A.transpose()).inverse() * (A*x - b);
+            //for (int i=0; i<varList.size(); i++) {
+                //varVals[varList[i]] = projX(i);
+            //}
+
+            ////std::cout << "Objective: " << newObjVal << std::endl;
+            ////std::cout << "Min eig: " << minEig << std::endl;
+            ////std::cout << "Linear error: " << (A*x - b).norm() << std::endl;
+            //if (verbosity >= 1) {
+                //std::cout << iter << " " << newObjVal << " " << minEig << " " << (A*x - b).norm() << std::endl;
+            //}
+
+        //}
+
+        // Use Dykstra's algorithm TODO
+        //Eigen::VectorXd prevP = Eigen::VectorXd::Zero(varList.size());
+        //Eigen::VectorXd prevQ = Eigen::VectorXd::Zero(varList.size());
+        std::map<Mon, std::complex<double>> p;
+        std::map<Mon, std::complex<double>> q;
+        for (auto& mon : vars) {
+            p[mon] = 0;
+            q[mon] = 0;
+        }
+        for (int iter=0; iter<maxIters; iter++) {
+
+            // y = proj_SDP(x + p)
+            Eigen::MatrixXcd X = replaceVariables(momentMatrices[0], varVals + p);
+            Eigen::SelfAdjointEigenSolver<Eigen::MatrixXcd> es(X);
+            Eigen::VectorXd eigVals = es.eigenvalues().real();
+            Eigen::MatrixXd eigVecs = es.eigenvectors().real();
+            double minEig = eigVals.minCoeff();
+            Eigen::MatrixXd proj = Eigen::MatrixXd::Zero(X.rows(), X.cols());
+            for (int i=0; i<eigVals.size(); i++) {
+                if (eigVals(i) > 0) {
+                    proj += eigVals(i) * eigVecs.col(i) * eigVecs.col(i).transpose();
+                }
+            }
+            std::map<Mon, std::complex<double>> y = varVals + p;
+            for (int i=0; i<proj.rows(); i++) {
+                for (int j=i; j<proj.cols(); j++) {
+                    y[momentMatrices[0][i][j].getKey()] = proj(i, j);
+                }
             }
 
-            // Check if X is positive
+            // p <- x + p - y
+            p = varVals + p - y;
+
+            // x <- proj_lin(y + q)
+            Eigen::VectorXd x = Eigen::VectorXd::Zero(varList.size());
+            for (int i=0; i<varList.size(); i++) {
+                x(i) = y[varList[i]].real() + q[varList[i]].real();
+            }
+            Eigen::VectorXd projX = x - A.transpose() * (A * A.transpose()).inverse() * (A*x - b);
+            for (int i=0; i<varList.size(); i++) {
+                varVals[varList[i]] = projX(i);
+            }
+
+            // q <- y + q - x
+            q = y + q - varVals;
+
+            //std::cout << "Objective: " << newObjVal << std::endl;
+            //std::cout << "Min eig: " << minEig << std::endl;
+            //std::cout << "Linear error: " << (A*x - b).norm() << std::endl;
+            if (verbosity >= 1) {
+                double newObjVal = objective.eval(varVals).real();
+                std::cout << iter << " " << newObjVal << " " << minEig << " " << (A*x - b).norm() << std::endl;
+            }
+
+            if (verbosity >= 3) {
+                std::cout << "mon x y p q" << std::endl;
+                for (auto& mon : vars) {
+                    std::cout << mon << " -> " << varVals[mon] << " " << y[mon] << " " << p[mon] << " " << q[mon] << std::endl;
+                }
+            }
+
+        }
+        // Output the final var values
+        //std::cout << "Final var values: " << std::endl;
+        //for (auto& mon : vars) {
+            //std::cout << mon << " -> " << varVals[mon] << std::endl;
+        //}
+        if (verbosity >= 1) {
+            std::cout << "Final objective: " << objective.eval(varVals).real() << std::endl;
+        }
+        if (verbosity >= 3) {
+            std::cout << "Final moment matrix: " << std::endl;
             Eigen::MatrixXcd X = replaceVariables(momentMatrices[0], varVals);
+            std::cout << X << std::endl;
             Eigen::SelfAdjointEigenSolver<Eigen::MatrixXcd> es(X);
             double minEig = es.eigenvalues().minCoeff();
-            std::cout << "Min eig: " << minEig << std::endl;
-            double newObjVal = objective.eval(varVals).real();
-            std::cout << "Objective: " << newObjVal << std::endl;
-
-            // Revert if bad
-            if (minEig < -1e-3) {
-                for (auto& mon : vars) {
-                    varVals[mon] -= deltas[mon];
-                }
-                for (auto& mon : vars) {
-                    deltas[mon] = rand(-1, 1) * stepSize;
-                }
-            } else if (newObjVal < prevObj) {
-                for (auto& mon : vars) {
-                    varVals[mon] -= deltas[mon];
-                }
-                for (auto& mon : vars) {
-                    deltas[mon] = -deltas[mon];
-                }
+            std::cout << "Final min eig: " << minEig << std::endl;
+            Eigen::VectorXd x = Eigen::VectorXd::Zero(varList.size());
+            for (int i=0; i<varList.size(); i++) {
+                x(i) = varVals[varList[i]].real();
             }
-
-            prevObj = newObjVal;
-
+            std::cout << "Final linear error: " << (A*x - b).norm() << std::endl;
         }
 
         return 0;
