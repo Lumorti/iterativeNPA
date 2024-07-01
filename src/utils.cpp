@@ -136,6 +136,36 @@ std::vector<std::vector<Poly>> generateFromTopRow(std::vector<Poly> monomsInTopR
         }
     }
 
+    // Find the redundant rows/cols
+    std::vector<int> redundantRows;
+    for (size_t i=0; i<matrixToReturn.size(); i++) {
+        for (size_t j=0; j<i; j++) {
+            if (matrixToReturn[i][0] == matrixToReturn[j][0]) {
+                bool isRedundant = true;
+                for (size_t k=0; k<matrixToReturn[i].size(); k++) {
+                    if (matrixToReturn[i][k] != matrixToReturn[j][k]) {
+                        isRedundant = false;
+                        break;
+                    }
+                }
+                if (isRedundant) {
+                    redundantRows.push_back(i);
+                    break;
+                }
+            }
+        }
+    }
+
+    // Remove the redundant rows/cols
+    std::sort(redundantRows.begin(), redundantRows.end(), std::greater<int>());
+    for (size_t i=0; i<redundantRows.size(); i++) {
+        int row = redundantRows[i];
+        for (size_t j=0; j<matrixToReturn.size(); j++) {
+            matrixToReturn[j].erase(matrixToReturn[j].begin() + row);
+        }
+        matrixToReturn.erase(matrixToReturn.begin() + row);
+    }
+
     // Return the matrix
     return matrixToReturn;
 
@@ -390,7 +420,7 @@ double rand(double min, double max) {
     return min + (max - min) * (double)rand() / RAND_MAX;
 }
 
-// Convert a primal SDP problem to a dual problem
+// Convert a primal SDP problem to a dual problem TODO switch to sparse
 void primalToDual(Poly& objective, std::vector<std::vector<std::vector<Poly>>>& momentMatrices, std::vector<Poly>& constraintsZero, std::vector<Poly>& constraintsPositive, bool variableObjective) {
 
     // First: put into into standard SDP form
@@ -398,31 +428,48 @@ void primalToDual(Poly& objective, std::vector<std::vector<std::vector<Poly>>>& 
         
     // Define C
     int matSize = momentMatrices[0].size();
-    std::vector<std::vector<double>> C = std::vector<std::vector<double>>(matSize, std::vector<double>(matSize, 0));
+    std::cout << "Matrix width: " << matSize << std::endl;
+    std::cout << "Forming C matrix..." << std::endl;
+    Eigen::SparseMatrix<double> C(matSize, matSize);
+    std::vector<Eigen::Triplet<double>> coeffsC;
     std::set<Mon> monsUsed;
     for (int j=0; j<momentMatrices[0].size(); j++) {
         for (int k=0; k<j; k++) {
             Mon key = momentMatrices[0][j][k].getKey();
             if (!monsUsed.count(key)) {
-                C[j][k] = -std::real(objective[key]) / 2;
-                C[k][j] = C[j][k];
+                coeffsC.push_back(Eigen::Triplet<double>(j, k, -std::real(objective[key]) / 2));
+                coeffsC.push_back(Eigen::Triplet<double>(k, j, -std::real(objective[key]) / 2));
                 monsUsed.insert(key);
+            }
+        }
+    }
+    C.setFromTriplets(coeffsC.begin(), coeffsC.end());
+
+    // Cache monomial locations
+    std::map<Mon, std::pair<int, int>> monLocs;
+    for (int i=0; i<matSize; i++) {
+        for (int j=i; j<matSize; j++) {
+            if (momentMatrices[0][i][j].size() == 1 && !monLocs.count(momentMatrices[0][i][j].getKey())) {
+                monLocs[momentMatrices[0][i][j].getKey()] = {i, j};
             }
         }
     }
 
     // Define the A matrices and b vector
-    std::vector<std::vector<std::vector<double>>> As;
+    std::cout << "Forming A matrices..." << std::endl;
+    std::vector<Eigen::SparseMatrix<double>> As;
     std::vector<double> b;
     for (int i=0; i<momentMatrices[0].size(); i++) {
         for (int j=i; j<momentMatrices[0][i].size(); j++) {
 
             // Trying to find the matrix relating this to other elements
-            std::vector<std::vector<double>> A(matSize, std::vector<double>(matSize, 0));
+            //std::vector<std::vector<double>> A(matSize, std::vector<double>(matSize, 0));
+            Eigen::SparseMatrix<double> A(matSize, matSize);
+            std::vector<Eigen::Triplet<double>> coeffsA;
             if (i == j) { 
-                A[i][j] = 1;
+                coeffsA.push_back(Eigen::Triplet<double>(i, j, 1));
             } else {
-                A[i][j] = 0.5;
+                coeffsA.push_back(Eigen::Triplet<double>(i, j, 0.5));
             }
             double bVal = 0;
             bool somethingFound = false;
@@ -439,26 +486,14 @@ void primalToDual(Poly& objective, std::vector<std::vector<std::vector<Poly>>>& 
                 // Otherwise find an earlier variable
                 } else {
                     Mon monomToFind = term.first;
-                    bool found = false;
-                    for (int l=0; l<matSize; l++) {
-                        for (int m=l; m<matSize; m++) {
-                            if (l*matSize + m >= i*matSize + j) {
-                                break;
-                            }
-                            if (momentMatrices[0][l][m].size() == 1 && momentMatrices[0][l][m].getKey() == monomToFind) {
-                                if (l == m) { 
-                                    A[l][m] = -std::real(term.second);
-                                } else {
-                                    A[l][m] = -std::real(term.second) / 2;
-                                }
-                                somethingFound = true;
-                                found = true;
-                                break;
-                            }
+                    std::pair<int, int> loc = monLocs[monomToFind];
+                    if (loc.first != i || loc.second != j) {
+                        if (i == j) { 
+                            coeffsA.push_back(Eigen::Triplet<double>(loc.first, loc.second, -std::real(term.second)));
+                        } else {
+                            coeffsA.push_back(Eigen::Triplet<double>(loc.first, loc.second, -std::real(term.second) / 2));
                         }
-                        if (found) {
-                            break;
-                        }
+                        somethingFound = true;
                     }
 
                 }
@@ -467,6 +502,7 @@ void primalToDual(Poly& objective, std::vector<std::vector<std::vector<Poly>>>& 
 
             // Add this matrix
             if (somethingFound) {
+                A.setFromTriplets(coeffsA.begin(), coeffsA.end());
                 As.push_back(A);
                 b.push_back(bVal);
             }
@@ -483,23 +519,61 @@ void primalToDual(Poly& objective, std::vector<std::vector<std::vector<Poly>>>& 
     }
 
     // Convert the objective to the dual constraints C-\sum_i y_i A_i >= 0
+    std::cout << "Converting to dual constraints..." << std::endl;
     std::vector<std::vector<Poly>> newMomentMat(matSize, std::vector<Poly>(matSize, Poly()));
     int newVarInd = b.size();
-    for (int i=0; i<matSize; i++) {
-        for (int j=i; j<matSize; j++) {
-            if (std::abs(C[i][j]) > 1e-10) {
-                // TODO new vars
+
+    //for (int i=0; i<matSize; i++) {
+        //for (int j=i; j<matSize; j++) {
+            ////if (std::abs(C[i][j]) > 1e-10) {
+            ////if (std::abs(C.coeff(i, j)) > 1e-10) {
+                ////if (variableObjective) {
+                    ////Mon newMon("<E" + std::to_string(newVarInd) + ">");
+                    ////newMomentMat[i][j] = Poly(newMon);
+                    ////newVarInd++;
+                ////} else {
+                    //////newMomentMat[i][j][Mon()] = C[i][j];
+                    ////newMomentMat[i][j] = Poly(C.coeff(i, j));
+                ////}
+            ////}
+            //for (int k=0; k<As.size(); k++) {
+                ////if (std::abs(As[k][i][j]) > 1e-10) {
+                //if (std::abs(As[k].coeff(i, j)) > 1e-10) {
+                    ////newMomentMat[i][j][Mon("<D" + std::to_string(k) + ">")] -= As[k][i][j];
+                    //newMomentMat[i][j][Mon("<D" + std::to_string(k) + ">")] -= As[k].coeff(i, j);
+                //}
+            //}
+        //}
+    //}
+
+    for (int k=0; k<C.outerSize(); ++k) {
+        for (Eigen::SparseMatrix<double>::InnerIterator it(C, k); it; ++it) {
+            int i = it.row();
+            int j = it.col();
+            if (i > j) {
+                continue;
+            }
+            if (std::abs(it.value()) > 1e-10) {
                 if (variableObjective) {
                     Mon newMon("<E" + std::to_string(newVarInd) + ">");
-                    newMomentMat[i][j] = Poly(newMon);
+                    newMomentMat[i][j] += Poly(newMon);
                     newVarInd++;
                 } else {
-                    newMomentMat[i][j][Mon()] = C[i][j];
+                    newMomentMat[i][j] += it.value();
                 }
             }
-            for (int k=0; k<As.size(); k++) {
-                if (std::abs(As[k][i][j]) > 1e-10) {
-                    newMomentMat[i][j][Mon("<D" + std::to_string(k) + ">")] -= As[k][i][j];
+        }
+    }
+    for (int k=0; k<As.size(); k++) {
+        for (int l=0; l<As[k].outerSize(); ++l) {
+            for (Eigen::SparseMatrix<double>::InnerIterator it(As[k], l); it; ++it) {
+                int i = it.row();
+                int j = it.col();
+                if (i > j) {
+                    continue;
+                }
+                if (std::abs(it.value()) > 1e-10) {
+                    newMomentMat[i][j][Mon("<D" + std::to_string(k) + ">")] -= it.value();
                 }
             }
         }

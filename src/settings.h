@@ -1,6 +1,7 @@
 #pragma once
 
 // Whether to sort by number first rather than letter
+#define LETTER_FIRST
 //#define NUMBER_FIRST
 
 // Whether to try swapping the monomial
@@ -18,4 +19,3 @@
 //#define A_SQUARED_EQUALS_AA
 #define A_SQUARED_EQUALS_1
 //#define A_SQUARED_EQUALS_A
-

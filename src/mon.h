@@ -66,7 +66,7 @@ public:
     bool operator>(const Mon& other) const;
 
     // Given a monomial, reduce it to its simplest form
-    std::pair<std::complex<double>, Mon> reduce() const;
+    std::pair<std::complex<double>, Mon> reduce(bool nested=false) const;
 
     // Pretty printing
     friend std::ostream& operator<<(std::ostream& os, const Mon& m);
@@ -86,6 +86,9 @@ public:
     // Check if contains a specific letter
     bool contains(char letter) const;
 
+    // Check if contains a specific number
+    bool contains(int number) const;
+
     // Get the sub-monomial
     Mon first(int n) const;
     Mon last(int n) const;
@@ -98,8 +101,6 @@ struct std::hash<Mon> {
     std::size_t operator()(const Mon& m) const {
         std::size_t seed = m.monomial.size();
         for (size_t i=0; i<m.monomial.size(); i++) {
-            //seed = seed * 31 + std::hash<char>{}(m.monomial[i].first);
-            //seed = seed * 31 + std::hash<int>{}(m.monomial[i].second);
             boost::hash_combine(seed, m.monomial[i].first);
             boost::hash_combine(seed, m.monomial[i].second);
         }

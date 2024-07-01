@@ -179,12 +179,13 @@ bool Mon::operator>(const Mon& other) const {
 }
 
 // Reduce a monomial, returning the coefficient and the reduced monomial
-std::pair<std::complex<double>, Mon> Mon::reduce() const {
+std::pair<std::complex<double>, Mon> Mon::reduce(bool nested) const {
 
     // Sort the monomial as much as we can
     Mon mon = *this;
     int monSize = int(mon.size());
     int monSize1 = monSize-1;
+    std::complex<double> coeff(1, 0);
 #ifdef LETTERS_COMMUTE
     for (int i=0; i<monSize; i++) {
         for (int j=0; j<monSize1; j++) {
@@ -217,7 +218,6 @@ std::pair<std::complex<double>, Mon> Mon::reduce() const {
     // XY = iZ
     // ZX = iY
     // YZ = iX
-    std::complex<double> coeff(1, 0);
 #ifdef PAULI_REDUCTIONS
     for (int i=mon.size()-1; i>0; i--) {
         if (mon[i-1].second == mon[i].second) {
@@ -287,9 +287,13 @@ std::pair<std::complex<double>, Mon> Mon::reduce() const {
 
     // Flip it to see if it's smaller
 #ifdef TRY_SWAP
-    Mon monFlipped = mon.reversed();
-    if (monFlipped < mon) {
-        mon = monFlipped;
+    if (!nested) {
+        Mon monFlipped = mon.reversed();
+        std::pair<std::complex<double>, Mon> monFlippedReduced = monFlipped.reduce(true);
+        if (monFlippedReduced.second < mon) {
+            mon = monFlippedReduced.second;
+            coeff = monFlippedReduced.first;
+        }
     }
 #endif
 
@@ -383,6 +387,16 @@ bool Mon::isConstant() const {
 bool Mon::contains(char letter) const {
     for (size_t i=0; i<monomial.size(); i++) {
         if (monomial[i].first == letter) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Check if it contains a specific number
+bool Mon::contains(int number) const {
+    for (size_t i=0; i<monomial.size(); i++) {
+        if (monomial[i].second == number) {
             return true;
         }
     }
