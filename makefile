@@ -1,6 +1,6 @@
 CXX=g++
-CXXFLAGS=-fmax-errors=3 -O3 -march=native
-#CXXFLAGS=-g -fmax-errors=3 -Og -march=native -Wall
+CXXFLAGS=-fmax-errors=3 -O3 -march=native -fopenmp
+#CXXFLAGS=-g -fmax-errors=3 -O0 -Wall
 LIBSEIGEN= -I${EIGENHOME}
 LIBSMOSEK= -I${MSKHOME}/h -L${MSKHOME}/bin -Wl,-rpath-link,${MSKHOME}/bin -Wl,-rpath=${MSKHOME}/bin -lmosek64 -lfusion64
 LIBSOPTIM= -I${OPTIMHOME}/header_only_version/ 

@@ -147,7 +147,7 @@ double solveSCS(Poly obj, std::vector<std::vector<std::vector<Poly>>>& psd, std:
                     int realLoc = variableLocs[term.first];
 
                     // Locations in the svec
-                    int realInd = matLocToVecLoc(i, j, fullMatSize) + l*sVecSize;
+                    int realInd = matLocToVecLoc(i, j, fullMatSize);
 
                     // Set the value in the matrix
                     ARows.push_back(realInd + numConsSoFar);
@@ -157,7 +157,6 @@ double solveSCS(Poly obj, std::vector<std::vector<std::vector<Poly>>>& psd, std:
                     } else {
                         AVals.push_back(std::real(term.second) * std::sqrt(2.0));
                     }
-
                     l++;
 
                 }
@@ -174,8 +173,11 @@ double solveSCS(Poly obj, std::vector<std::vector<std::vector<Poly>>>& psd, std:
         std::cout << "ACols: " << ACols << std::endl;
         std::cout << "AVals: " << AVals << std::endl;
         std::cout << "bVals: " << bVals << std::endl;
+        std::cout << "n: " << n << std::endl;
+        std::cout << "m: " << m << std::endl;
         std::vector<std::vector<double>> ATemp2(m, std::vector<double>(n, 0.0));
         for (size_t i=0; i<ACols.size(); i++) {
+            std::cout << ARows[i] << " " << ACols[i] << " " << AVals[i] << std::endl;
             ATemp2[ARows[i]][ACols[i]] = AVals[i];
         }
         std::cout << "Reconstructed matrix:" << std::endl;
@@ -279,10 +281,6 @@ double solveSCS(Poly obj, std::vector<std::vector<std::vector<Poly>>>& psd, std:
         for (int i = 0; i < n; ++i) {
             printf("x[%i] = %4f\n", i, sol->x[i]);
         }
-        printf("Optimal dual vector y*:\n");
-        for (int i = 0; i < m; ++i) {
-            printf("y[%i] = %4f\n", i, sol->y[i]);
-        }
     }
 
     // Get the solution
@@ -312,9 +310,8 @@ double solveSCS(Poly obj, std::vector<std::vector<std::vector<Poly>>>& psd, std:
     free(sol->y);
     free(sol->s);
     free(sol);
-    free(boxConsMin);
-    free(boxConsMax);
-    free(scs_work);
+    delete(boxConsMin);
+    delete(boxConsMax);
 
     return -pObj;
 

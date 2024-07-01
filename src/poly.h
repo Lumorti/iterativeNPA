@@ -1,26 +1,34 @@
 #pragma once
-#include <map>
 #include "mon.h"
+#include "settings.h"
+#include <map>
+#include <unordered_map>
+
+// Whether to use a map or an unordered_map
+//typedef std::map<Mon, std::complex<double>> MapType;
+typedef std::unordered_map<Mon, std::complex<double>> MapType;
 
 // Non-commuting polynomial class
 class Poly {
 public:
 
     // Vars
-    std::map<Mon, std::complex<double>> polynomial;
+    MapType polynomial;
     int verbosity = 1;
 
     // If initialized from nothing
     Poly();
 
     // If initialized from just a coeff
+    Poly(int coeff);
+    Poly(double coeff);
     Poly(std::complex<double> coeff);
 
     // If initialized from just a monomial
     Poly(Mon mon);
 
     // If initialized from a vector
-    Poly (std::map<Mon, std::complex<double>> poly);
+    Poly (MapType poly);
 
     // If initialized from a single coeff + monomial
     Poly(std::pair<std::complex<double>, Mon> pair);
@@ -39,7 +47,11 @@ public:
     Poly(std::string asString);
 
     // When assigning manually with a vector
-    Poly& operator=(const std::map<Mon, std::complex<double>>& poly);
+    Poly& operator=(const MapType& poly);
+
+    // Check equality with a number
+    bool operator==(const std::complex<double>& other);
+    bool operator==(const double& other);
 
     // Checking equality of two polynomials
     bool operator==(const Poly& other);
@@ -64,6 +76,9 @@ public:
 
     // When multiplying in-place
     Poly& operator*=(const Poly& other);
+
+    // Randomise a poly
+    void randomize(double lower=-1, double upper=1);
 
     // When multiplying by a constant
     Poly operator*(const std::complex<double>& other);
@@ -94,10 +109,10 @@ public:
     Mon getKey();
 
     // Iterators
-    std::map<Mon,std::complex<double>>::iterator begin() {return polynomial.begin();}
-    std::map<Mon,std::complex<double>>::iterator end()   {return polynomial.end();}
-    std::map<Mon,std::complex<double>>::const_iterator begin() const {return polynomial.begin();}
-    std::map<Mon,std::complex<double>>::const_iterator end() const {return polynomial.end();}
+    MapType::iterator begin() {return polynomial.begin();}
+    MapType::iterator end()   {return polynomial.end();}
+    MapType::const_iterator begin() const {return polynomial.begin();}
+    MapType::const_iterator end() const {return polynomial.end();}
 
     // Self-negative
     Poly operator-();
@@ -125,7 +140,9 @@ public:
     friend std::ostream& operator<<(std::ostream& os, const std::vector<Poly>& v);
     friend std::ostream& operator<<(std::ostream& os, const std::vector<std::vector<Poly>>& m);
 
-    // Replace a monomial by a polynomial
+    // Replace a monomial with something
+    void replace(std::pair<char,int> mon, Mon replacement);
+    Poly replaced(std::pair<char,int> mon, Mon replacement);
     void replace(std::pair<char,int> mon, Poly replacement);
     Poly replaced(std::pair<char,int> mon, Poly replacement);
     void replace(Mon mon, Poly replacement);
@@ -159,6 +176,9 @@ public:
 
     // Check if the polynomial is constant
     bool isConstant() const;
+
+    // Check if the polynomial is zero
+    bool isZero() const;
 
     // Apply a monomial map
     Poly applyMap(std::map<Mon, Mon> map);

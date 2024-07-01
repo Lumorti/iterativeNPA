@@ -1,6 +1,8 @@
 #include "utils.h"
 #include <iostream>
 #include "printing.h"
+#include <Eigen/Sparse>
+#include <omp.h>
 
 // Given a matrix and a variable list, return the matrix with the variables replaced
 Eigen::MatrixXcd replaceVariables(std::vector<std::vector<Poly>>& momentMatrix, const std::map<Mon, std::complex<double>>& varVals) {
@@ -562,6 +564,103 @@ void toCC(std::vector<int>& ARows, std::vector<int>& ACols, std::vector<double>&
     ARows = rowIndices;
     ACols = colPtrs;
     AVals = values;
+
+}
+
+// Solve a linear system with Eigen
+double solveEigen(Poly& objective, std::vector<Poly>& constraintsZero, int verbosity, int numCores) {
+
+    // Get the list of variables
+    std::set<Mon> variableSet;
+    variableSet.insert(Mon());
+    for (size_t i=0; i<constraintsZero.size(); i++) {
+        addVariables(variableSet, constraintsZero[i]);
+    }
+    addVariables(variableSet, objective);
+    variableSet.erase(Mon());
+    std::vector<Mon> variables = toVector(variableSet);
+
+    // Cache the variable locations
+    std::map<Mon, int> variableLocs;
+    for (size_t i=0; i<variables.size(); i++) {
+        variableLocs[variables[i]] = i;
+    }
+
+    // Set up a sparse Eigen matrix
+    Eigen::SparseMatrix<double,Eigen::RowMajor> A(constraintsZero.size(), variables.size());
+    Eigen::VectorXd b = Eigen::VectorXd::Zero(constraintsZero.size());
+    std::vector<Eigen::Triplet<double>> coefficients;
+    for (int i=0; i<constraintsZero.size(); i++) {
+        for (auto& term : constraintsZero[i]) {
+            if (term.first.isConstant() && std::abs(term.second) > 1e-14) {
+                b[i] = -std::real(term.second);
+            } else {
+                coefficients.push_back(Eigen::Triplet<double>(i, variableLocs[term.first], std::real(term.second)));
+            }
+        }
+    }
+    A.setFromTriplets(coefficients.begin(), coefficients.end());
+    A.makeCompressed();
+
+    // Output the matrix if verbose
+    if (verbosity >= 3) {
+        Eigen::MatrixXd denseA = A;
+        std::cout << "A:" << std::endl;
+        std::cout << denseA << std::endl;
+        std::cout << "b:" << std::endl;
+        std::cout << b << std::endl;
+    }
+
+    // Solve the system
+    //Eigen::SparseLU<Eigen::SparseMatrix<double>, Eigen::COLAMDOrdering<int>> solver;
+    //std::cout << "Analyzing pattern..." << std::endl;
+    //solver.analyzePattern(A); 
+    //std::cout << "Factoring matrix..." << std::endl;
+    //solver.factorize(A); 
+    //if (solver.info() != Eigen::Success) {
+        //std::cout << "ERROR - Failed to factorize matrix" << std::endl;
+    //}
+    //std::cout << "Solving..." << std::endl;
+    //Eigen::VectorXd x = solver.solve(b);
+
+    // Solve the system
+    //Eigen::SparseQR<Eigen::SparseMatrix<double>, Eigen::COLAMDOrdering<int>> solver;
+    //std::cout << "Analyzing pattern..." << std::endl;
+    //solver.analyzePattern(A); 
+    //std::cout << "Factoring matrix..." << std::endl;
+    //solver.factorize(A); 
+    //if (solver.info() != Eigen::Success) {
+        //std::cout << "ERROR - Failed to factorize matrix" << std::endl;
+    //}
+    //std::cout << "Solving..." << std::endl;
+    //Eigen::VectorXd x = solver.solve(b);
+    
+    omp_set_num_threads(numCores);
+    Eigen::setNbThreads(numCores);
+
+    // Solve the system
+    //Eigen::BiCGSTAB<Eigen::SparseMatrix<double>, Eigen::IncompleteLUT<double>> solver;
+    //solver.setMaxIterations(1000);
+    //solver.compute(A);
+    //Eigen::VectorXd x = solver.solve(b);
+    //std::cout << "Num iterations:  " << solver.iterations() << std::endl;
+    //std::cout << "Estimated error: " << solver.error()      << std::endl;
+
+    // Solve the system
+    Eigen::LeastSquaresConjugateGradient<Eigen::SparseMatrix<double>> solver;
+    solver.compute(A);
+    Eigen::VectorXd x = solver.solve(b);
+    std::cout << "Num iterations:  " << solver.iterations() << std::endl;
+    std::cout << "Estimated error: " << solver.error()      << std::endl;
+
+    // Compute the objective
+    std::cout << "Computing objective..." << std::endl;
+    double objVal = 0;
+    for (auto& term : objective) {
+        objVal += std::real(term.second) * x[variableLocs[term.first]];
+    }
+
+    return objVal;
 
 }
 

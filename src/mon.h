@@ -3,6 +3,7 @@
 #include <complex>
 #include <string>
 #include <set>
+#include <boost/functional/hash.hpp>
 
 // Non-commuting monomial class
 class Mon {
@@ -85,5 +86,24 @@ public:
     // Check if contains a specific letter
     bool contains(char letter) const;
 
+    // Get the sub-monomial
+    Mon first(int n) const;
+    Mon last(int n) const;
+
+};
+
+// Hash function for monomials
+template <>
+struct std::hash<Mon> {
+    std::size_t operator()(const Mon& m) const {
+        std::size_t seed = m.monomial.size();
+        for (size_t i=0; i<m.monomial.size(); i++) {
+            //seed = seed * 31 + std::hash<char>{}(m.monomial[i].first);
+            //seed = seed * 31 + std::hash<int>{}(m.monomial[i].second);
+            boost::hash_combine(seed, m.monomial[i].first);
+            boost::hash_combine(seed, m.monomial[i].second);
+        }
+        return seed;
+    }
 };
 

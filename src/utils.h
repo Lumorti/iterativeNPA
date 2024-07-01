@@ -48,3 +48,6 @@ void primalToDual(Poly& objective, std::vector<std::vector<std::vector<Poly>>>& 
 // Convert from sparse to compressed column format
 void toCC(std::vector<int>& ARows, std::vector<int>& ACols, std::vector<double>& AVals, int numCols);
 
+// Solve a linear system with Eigen
+double solveEigen(Poly& objective, std::vector<Poly>& constraintsZero, int verbosity=1, int numCores=1);
+

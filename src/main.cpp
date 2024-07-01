@@ -4,6 +4,7 @@
 
 // Import Eigen
 #include <Eigen/Dense>
+#include <Eigen/Sparse>
 
 // Local libs
 #include "poly.h"
@@ -36,20 +37,15 @@ int main(int argc, char* argv[]) {
     srand(time(NULL));
 
     // Define the Bell scenario
-    int numOutcomesA = 2;
-    int numOutcomesB = 2;
     int level = 1;
-    int subLevel = -1;
     bool useDual = false;
     Poly bellFunc("<A1B1>+<A1B2>+<A2B1>-<A2B2>");
     int testing = 0;
-    int numToSample = 1000;
     int verbosity = 1;
     int maxIters = 1;
-    double startingPenalty = 1e5;
-    int numPenalties = 5;
     bool use01 = false;
     double stepSize = 0.001;
+    double tolerance = 1e-6;
     std::string solver = "MOSEK";
     std::string seed = "";
     std::string problemName = "CHSH";
@@ -59,16 +55,8 @@ int main(int argc, char* argv[]) {
     for (int i=1; i<argc; i++) {
         std::string argAsString = std::string(argv[i]);
 
-        // Setting number of outcomes
-        if (argAsString == "-a") {
-            numOutcomesA = std::stoi(argv[i+1]);
-            i++;
-        } else if (argAsString == "-b") {
-            numOutcomesB = std::stoi(argv[i+1]);
-            i++;
-
         // CHSH (c = 2, q = 2sqrt(2) w/ level 1)
-        } else if (argAsString == "--chsh" || argAsString == "--CHSH") {
+        if (argAsString == "--chsh" || argAsString == "--CHSH") {
             bellFunc = Poly("<A1B1>+<A1B2>+<A2B1>-<A2B2>");
             problemName = "CHSH";
 
@@ -129,16 +117,6 @@ int main(int argc, char* argv[]) {
             stepSize = std::stod(argv[i+1]);
             i++;
 
-        // Set the sub level
-        } else if (argAsString == "-s") {
-            subLevel = std::stoi(argv[i+1]);
-            i++;
-
-        // Set the number to sample
-        } else if (argAsString == "-n") {
-            numToSample = std::stoi(argv[i+1]);
-            i++;
-
         // If we're testing
         } else if (argAsString == "-t") {
             testing = std::stoi(argv[i+1]);
@@ -153,19 +131,16 @@ int main(int argc, char* argv[]) {
         } else if (argAsString == "-h" || argAsString == "--help") {
             std::cout << "Usage: " << argv[0] << " [options]" << std::endl;
             std::cout << "Options:" << std::endl;
-            std::cout << "  -a <int>        Number of outcomes for Alice" << std::endl;
-            std::cout << "  -b <int>        Number of outcomes for Bob" << std::endl;
             std::cout << "  --chsh          Use the CHSH scenario" << std::endl;
             std::cout << "  --I3322         Use the I3322 scenario" << std::endl;
             std::cout << "  -l <int>        Level of the moment matrix" << std::endl;
-            std::cout << "  -s <int>        Sub-level of the moment matrix" << std::endl;
             std::cout << "  -i <int>        Iteration limit" << std::endl;
-            std::cout << "  -n <int>        Number of moment matrices to sample" << std::endl;
             std::cout << "  -S <str>        Seed for the random number generator" << std::endl;
             std::cout << "  -v <int>        Set the verbosity level" << std::endl;
             std::cout << "  -p <dbl>        Set the starting penalty" << std::endl;
             std::cout << "  -P <int>        Set the number of penalties to use" << std::endl;
-            std::cout << "  -t              Test the moment matrix" << std::endl;
+            std::cout << "  -T <dbl>        Set the tolerance" << std::endl;
+            std::cout << "  -t <int>        Testing some new idea" << std::endl;
             std::cout << "  -e <str>        Add an extra moment to the top row" << std::endl;
             std::cout << "  -h              Display this help message" << std::endl;
             std::cout << "  -D              Use the dual of the problem" << std::endl;
@@ -174,19 +149,14 @@ int main(int argc, char* argv[]) {
             std::cout << "  -01             Use 0/1 output instead of -1/1" << std::endl;
             return 0;
 
+        // If setting the tolerance
+        } else if (argAsString == "-T") {
+            tolerance = std::stod(argv[i+1]);
+            i++;
+
         // If using the dual
         } else if (argAsString == "-D") {
             useDual = true;
-
-        // Set the starting penalty
-        } else if (argAsString == "-p") {
-            startingPenalty = std::stod(argv[i+1]);
-            i++;
-
-        // Set the number of penalty adjustments
-        } else if (argAsString == "-P") {
-            numPenalties = std::stoi(argv[i+1]);
-            i++;
 
         // Otherwise we don't know what this is
         } else {
@@ -224,13 +194,19 @@ int main(int argc, char* argv[]) {
 
     // If using the dual
     if (useDual) {
-        if (verbosity >= 2) {
+        if (verbosity >= 3) {
             std::cout << "Primal objective: " << std::endl;
             std::cout << objective << std::endl << std::endl;
             std::cout << "Primal moment matrix: " << std::endl;
             std::cout << momentMatrices[0] << std::endl << std::endl;
         }
         primalToDual(objective, momentMatrices, constraintsZero, constraintsPositive);
+        if (verbosity >= 3) {
+            std::cout << "Dual objective: " << std::endl;
+            std::cout << objective << std::endl << std::endl;
+            std::cout << "Dual moment matrix: " << std::endl;
+            std::cout << momentMatrices[0] << std::endl << std::endl;
+        }
     }
 
     // The idea of using the dual to find cons that aren't in level 1
@@ -547,11 +523,14 @@ int main(int argc, char* argv[]) {
         }
         momentMatrices = {newMomentMatrix};
 
-        std::cout << "New moment matrix: " << std::endl;
-        std::cout << momentMatrices[0] << std::endl;
-        std::cout << "Zero constraints: " << std::endl;
-        for (auto con : constraintsZero) {
-            std::cout << con << std::endl;
+        // Output things if super verbose
+        if (verbosity >= 3) {
+            std::cout << "New moment matrix: " << std::endl;
+            std::cout << momentMatrices[0] << std::endl;
+            std::cout << "Zero constraints: " << std::endl;
+            for (auto con : constraintsZero) {
+                std::cout << con << std::endl;
+            }
         }
 
         // Get the list of variables
@@ -564,32 +543,67 @@ int main(int argc, char* argv[]) {
             vars.erase(Mon());
         }
         std::vector<Mon> varList(vars.begin(), vars.end());
+        std::map<Mon, int> varLocs;
+        for (int i=0; i<varList.size(); i++) {
+            varLocs[varList[i]] = i;
+        }
 
         // Starting point
-        double distance = 1000000;
+        double distance = stepSize;
+        if (std::abs(stepSize) < 0.01) {
+            distance = 100;
+        }
         std::map<Mon, std::complex<double>> varVals;
         for (auto& mon : vars) {
+            //varVals[mon] = 0;
+            //varVals[mon] = rand(-1, 1);
             if (objective.contains(mon)) {
                 if (objective[mon].real() > 0) {
                     varVals[mon] = distance;
                 } else {
-                    varVals[mon] = -distance;
+                    varVals[mon] = distance;
                 }
+            //} else if (!mon.contains('M')) {
+                //varVals[mon] = rand(-distance, distance);
             } else {
                 varVals[mon] = 0;
             }
         }
+        //varVals[Mon("<M5>")] = rand(-1, 1);
+        //std::cout << "Test mon init val: " << varVals[Mon("<M5>")] << std::endl;
+
+        // Constrain the objective
+        constraintsPositive.push_back(objective - Poly(distance));
 
         // The matrix defining the linear constraints
-        Eigen::MatrixXd A = Eigen::MatrixXd::Zero(constraintsZero.size(), varList.size());
+        Eigen::SparseMatrix<double> A(constraintsZero.size(), varList.size());
+        std::vector<Eigen::Triplet<double>> tripletList;
         Eigen::VectorXd b = Eigen::VectorXd::Zero(constraintsZero.size());
         for (int i=0; i<constraintsZero.size(); i++) {
-            for (int j=0; j<varList.size(); j++) {
-                A(i, j) = constraintsZero[i][varList[j]].real();
+            for (auto& term : constraintsZero[i]) {
+                if (term.first.size() != 0) {
+                    tripletList.push_back(Eigen::Triplet<double>(i, varLocs[term.first], term.second.real()));
+                }
             }
             b(i) = -constraintsZero[i][Mon()].real();
         }
+        A.setFromTriplets(tripletList.begin(), tripletList.end());
 
+        // The matrix defining the positive constraints
+        Eigen::SparseMatrix<double> D(constraintsPositive.size(), varList.size());
+        std::vector<Eigen::Triplet<double>> tripletListD;
+        Eigen::VectorXd e = Eigen::VectorXd::Zero(constraintsPositive.size());
+        for (int i=0; i<constraintsPositive.size(); i++) {
+            for (auto& term : constraintsPositive[i]) {
+                if (term.first.size() != 0) {
+                    tripletListD.push_back(Eigen::Triplet<double>(i, varLocs[term.first], term.second.real()));
+                }
+            }
+            e(i) = -constraintsPositive[i][Mon()].real();
+        }
+        D.setFromTriplets(tripletListD.begin(), tripletListD.end());
+
+        // If verbose, output everything
         if (verbosity >= 3) {
             std::cout << "vars: " << std::endl;
             for (int i=0; i<varList.size(); i++) {
@@ -601,13 +615,25 @@ int main(int argc, char* argv[]) {
             std::cout << b << std::endl;
         }
 
-        for (int iter=0; iter<10; iter++) {
+        // Set up the linear solver
+        Eigen::LeastSquaresConjugateGradient<Eigen::SparseMatrix<double>> linSolver;
+        linSolver.compute(A);
 
-            // Positive projection
+        // Set up the linear solver
+        Eigen::LeastSquaresConjugateGradient<Eigen::SparseMatrix<double>> linSolverD;
+        linSolverD.compute(D);
+
+        // Keep iterating until reaching limit or convergence TODO
+        double prevLinError = 1e-3;
+        for (int iter=0; iter<maxIters; iter++) {
+
+            // Check the objective
+            double newObjVal = objective.eval(varVals).real();
+
+            // SDP projection
             Eigen::MatrixXcd X = replaceVariables(momentMatrices[0], varVals);
             Eigen::SelfAdjointEigenSolver<Eigen::MatrixXcd> es(X);
             double minEig = es.eigenvalues().minCoeff();
-            double newObjVal = objective.eval(varVals).real();
             Eigen::VectorXd eigVals = es.eigenvalues().real();
             Eigen::MatrixXd eigVecs = es.eigenvectors().real();
             Eigen::MatrixXd proj = Eigen::MatrixXd::Zero(X.rows(), X.cols());
@@ -622,21 +648,41 @@ int main(int argc, char* argv[]) {
                 }
             }
 
+            // Positive projection TODO
+            //Eigen::VectorXd xP = Eigen::VectorXd::Zero(varList.size());
+            //for (int i=0; i<varList.size(); i++) {
+                //xP(i) = varVals[varList[i]].real();
+            //}
+            //if ((D * xP - e).maxCoeff() < -1e-6) {
+                ////linSolverD.setTolerance(std::min(prevLinError / 10.0, 1e-3));
+                //linSolverD.setTolerance(1e-8);
+                //Eigen::VectorXd projXD = linSolverD.solveWithGuess(e, xP);
+                //for (int i=0; i<varList.size(); i++) {
+                    //varVals[varList[i]] = projXD(i);
+                //}
+            //}
+
             // Linear projection
             Eigen::VectorXd x = Eigen::VectorXd::Zero(varList.size());
             for (int i=0; i<varList.size(); i++) {
                 x(i) = varVals[varList[i]].real();
             }
-            Eigen::VectorXd projX = x - A.transpose() * (A * A.transpose()).inverse() * (A*x - b);
+            double errorLin = (A*x - b).norm();
+            linSolver.setTolerance(std::min(prevLinError / 10.0, 1e-3));
+            Eigen::VectorXd projX = linSolver.solveWithGuess(b, x);
             for (int i=0; i<varList.size(); i++) {
                 varVals[varList[i]] = projX(i);
             }
+            prevLinError = errorLin;
 
-            //std::cout << "Objective: " << newObjVal << std::endl;
-            //std::cout << "Min eig: " << minEig << std::endl;
-            //std::cout << "Linear error: " << (A*x - b).norm() << std::endl;
+            // Per iteration output
             if (verbosity >= 1) {
-                std::cout << iter << " " << newObjVal << " " << minEig << " " << (A*x - b).norm() << std::endl;
+                std::cout << iter << " " << newObjVal << " " << minEig << " " << errorLin << std::endl;
+            }
+
+            // Stopping condition
+            if (std::abs(errorLin) < tolerance && minEig > -tolerance) {
+                break;
             }
 
         }
@@ -644,65 +690,71 @@ int main(int argc, char* argv[]) {
         // Use Dykstra's algorithm TODO
         //Eigen::VectorXd prevP = Eigen::VectorXd::Zero(varList.size());
         //Eigen::VectorXd prevQ = Eigen::VectorXd::Zero(varList.size());
-        std::map<Mon, std::complex<double>> p;
-        std::map<Mon, std::complex<double>> q;
-        for (auto& mon : vars) {
-            p[mon] = 0;
-            q[mon] = 0;
-        }
-        for (int iter=0; iter<maxIters; iter++) {
+        //std::map<Mon, std::complex<double>> p;
+        //std::map<Mon, std::complex<double>> q;
+        //for (auto& mon : vars) {
+            //p[mon] = 0;
+            //q[mon] = 0;
+        //}
+        //for (int iter=0; iter<maxIters; iter++) {
 
-            // y = proj_SDP(x + p)
-            Eigen::MatrixXd X = replaceVariables(momentMatrices[0], varVals + p).real();
-            Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es(X);
-            Eigen::VectorXd eigVals = es.eigenvalues().real();
-            Eigen::MatrixXd eigVecs = es.eigenvectors().real();
-            double minEig = eigVals.minCoeff();
-            Eigen::MatrixXd proj = Eigen::MatrixXd::Zero(X.rows(), X.cols());
-            for (int i=0; i<eigVals.size(); i++) {
-                if (eigVals(i) > 0) {
-                    proj += eigVals(i) * eigVecs.col(i) * eigVecs.col(i).transpose();
-                }
-            }
-            std::map<Mon, std::complex<double>> y = varVals + p;
-            for (int i=0; i<proj.rows(); i++) {
-                for (int j=i; j<proj.cols(); j++) {
-                    y[momentMatrices[0][i][j].getKey()] = proj(i, j);
-                }
-            }
+            //// y = proj_SDP(x + p)
+            //Eigen::MatrixXd X = replaceVariables(momentMatrices[0], varVals + p).real();
+            //Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es(X);
+            //Eigen::VectorXd eigVals = es.eigenvalues().real();
+            //Eigen::MatrixXd eigVecs = es.eigenvectors().real();
+            //double minEig = eigVals.minCoeff();
+            //Eigen::MatrixXd proj = Eigen::MatrixXd::Zero(X.rows(), X.cols());
+            //for (int i=0; i<eigVals.size(); i++) {
+                //if (eigVals(i) > 0) {
+                    //proj += eigVals(i) * eigVecs.col(i) * eigVecs.col(i).transpose();
+                //}
+            //}
+            //std::map<Mon, std::complex<double>> y = varVals + p;
+            //for (int i=0; i<proj.rows(); i++) {
+                //for (int j=i; j<proj.cols(); j++) {
+                    //y[momentMatrices[0][i][j].getKey()] = proj(i, j);
+                //}
+            //}
 
-            // p <- x + p - y
-            p = p + varVals - y;
+            //// p <- x + p - y
+            //p = p + varVals - y;
 
-            // x <- proj_lin(y + q)
-            Eigen::VectorXd x = Eigen::VectorXd::Zero(varList.size());
-            for (int i=0; i<varList.size(); i++) {
-                x(i) = y[varList[i]].real() + q[varList[i]].real();
-            }
-            Eigen::VectorXd projX = x - A.transpose() * (A * A.transpose()).inverse() * (A*x - b);
-            for (int i=0; i<varList.size(); i++) {
-                varVals[varList[i]] = projX(i);
-            }
+            //// x <- proj_lin(y + q)
+            //Eigen::VectorXd x = Eigen::VectorXd::Zero(varList.size());
+            //for (int i=0; i<varList.size(); i++) {
+                //x(i) = y[varList[i]].real() + q[varList[i]].real();
+            //}
+            //Eigen::VectorXd projX = x - A.transpose() * (A * A.transpose()).inverse() * (A*x - b);
+            //for (int i=0; i<varList.size(); i++) {
+                //varVals[varList[i]] = projX(i);
+            //}
 
-            // q <- y + q - x
-            q = q + y - varVals;
+            //// q <- y + q - x
+            //q = q + y - varVals;
 
-            //std::cout << "Objective: " << newObjVal << std::endl;
-            //std::cout << "Min eig: " << minEig << std::endl;
-            //std::cout << "Linear error: " << (A*x - b).norm() << std::endl;
-            if (verbosity >= 1) {
-                double newObjVal = objective.eval(varVals).real();
-                std::cout << iter << " " << newObjVal << " " << minEig << " " << (A*x - b).norm() << std::endl;
-            }
+            ////std::cout << "Objective: " << newObjVal << std::endl;
+            ////std::cout << "Min eig: " << minEig << std::endl;
+            ////std::cout << "Linear error: " << (A*x - b).norm() << std::endl;
+            //double newObjVal = objective.eval(varVals).real();
+            //double errorLin = (A*x - b).norm();
+            //if (verbosity >= 1) {
+                //std::cout << iter << " " << newObjVal << " " << minEig << " " << errorLin << std::endl;
+            //}
 
-            if (verbosity >= 3) {
-                std::cout << "mon x y p q" << std::endl;
-                for (auto& mon : vars) {
-                    std::cout << mon << " -> " << varVals[mon] << " " << y[mon] << " " << p[mon] << " " << q[mon] << std::endl;
-                }
-            }
+            //if (verbosity >= 3) {
+                //std::cout << "mon x y p q" << std::endl;
+                //for (auto& mon : vars) {
+                    //std::cout << mon << " -> " << varVals[mon] << " " << y[mon] << " " << p[mon] << " " << q[mon] << std::endl;
+                //}
+            //}
 
-        }
+            //// Stopping condition
+            //if (std::abs(errorLin) < 1e-6 && minEig > -1e-6) {
+                //break;
+            //}
+
+        //}
         // Output the final var values
         //std::cout << "Final var values: " << std::endl;
         //for (auto& mon : vars) {
@@ -714,6 +766,10 @@ int main(int argc, char* argv[]) {
             if (verbosity >= 3) {
                 std::cout << "Final moment matrix: " << std::endl;
                 std::cout << X << std::endl;
+                std::cout << "Final var vals: " << std::endl;
+                for (int i=0; i<varList.size(); i++) {
+                    std::cout << varList[i] << " -> " << varVals[varList[i]] << std::endl;
+                }
             }
             Eigen::SelfAdjointEigenSolver<Eigen::MatrixXcd> es(X);
             double minEig = es.eigenvalues().minCoeff();
