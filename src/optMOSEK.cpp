@@ -231,10 +231,15 @@ double solveMOSEK(Poly obj, std::vector<std::vector<std::vector<Poly>>>& psd, st
     }
 
     // Create the main variable vector
+    mosek::fusion::Variable::t xM;
     if (verbosity >= 3) {
         std::cout << "Bounds: " << varBounds.first << " " << varBounds.second << std::endl;
     }
-    mosek::fusion::Variable::t xM = M->variable(variables.size(), mosek::fusion::Domain::inRange(varBounds.first, varBounds.second));
+    if (varBounds.second >= 10000) {
+        xM = M->variable(variables.size(), mosek::fusion::Domain::unbounded());
+    } else {
+        xM = M->variable(variables.size(), mosek::fusion::Domain::inRange(varBounds.first, varBounds.second));
+    }
 
     // The objective function
     M->objective(mosek::fusion::ObjectiveSense::Maximize, mosek::fusion::Expr::dot(cM, xM));

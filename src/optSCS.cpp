@@ -58,6 +58,9 @@ double solveSCS(Poly obj, std::vector<std::vector<std::vector<Poly>>>& psd, std:
     // Number of variables and constraints
     int n = variables.size();
     int numBoxCons = n;
+    if (varBounds.second >= 10000) {
+        numBoxCons = 0;
+    }
     int m = 1 + constraintsZero.size() + constraintsPositive.size() + numBoxCons;
     for (size_t i=0; i<psd.size(); i++) {
         m += psd[i].size() * (psd[i].size() + 1) / 2;
@@ -237,9 +240,11 @@ double solveSCS(Poly obj, std::vector<std::vector<std::vector<Poly>>>& psd, std:
         boxConsMin[i] = varBounds.first;
         boxConsMax[i] = varBounds.second;
     }
-    k->bsize = n;
-    k->bl = boxConsMin;
-    k->bu = boxConsMax;
+    if (numBoxCons > 0) {
+        k->bsize = numBoxCons;
+        k->bl = boxConsMin;
+        k->bu = boxConsMax;
+    }
 
     // Zero cone
     k->z = 1 + constraintsZero.size();

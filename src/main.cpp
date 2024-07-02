@@ -400,7 +400,7 @@ int main(int argc, char* argv[]) {
 
     }
 
-    if (testing >= 5) {
+    if (testing == 5) {
 
         // Solve just as a linear system
         std::vector<std::vector<Poly>> momentMatricesL1 = generateAllMomentMatrices(bellFunc, {}, 1, verbosity)[0];
@@ -418,7 +418,7 @@ int main(int argc, char* argv[]) {
         }
 
         double prevBound = 0;
-        for (int iter=0; iter<testing; iter++) {
+        for (int iter=0; iter<maxIters; iter++) {
 
             std::cout << "Linear solving " << iter << std::endl;
             double res = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, {-1, 1}, &xMap);
@@ -447,6 +447,10 @@ int main(int argc, char* argv[]) {
 
             std::cout << constraintsPositive.size() << " " << res << " " << eigVals.minCoeff() << std::endl;
 
+            if (eigVals.minCoeff() > tolerance) {
+                break;
+            }
+
             // For each negative eigenvalue, store the eigenvector
             std::vector<Eigen::VectorXd> negEigVecs;
             for (int i=0; i<eigVals.size(); i++) {
@@ -469,6 +473,11 @@ int main(int argc, char* argv[]) {
                 }
                 constraintsPositive.push_back(newCon);
             }
+
+            // Limit the number of constraints, removing old ones
+            //if (constraintsPositive.size() > 150) {
+                //constraintsPositive.erase(constraintsPositive.begin(), constraintsPositive.begin() + constraintsPositive.size() - 100);
+            //}
 
         }
 
@@ -518,6 +527,7 @@ int main(int argc, char* argv[]) {
     if (testing == 2) {
 
         if (verbosity >= 1) {
+            std::cout << "Moment matrix has size " << momentMatrices[0].size() << std::endl;
             std::cout << "Starting projection..." << std::endl;
         }
 
@@ -605,7 +615,11 @@ int main(int argc, char* argv[]) {
         linSolver.compute(A);
 
         // Keep iterating until reaching limit or convergence TODO
+        stepSize = 1;
         double prevLinError = 1e-3;
+        Eigen::VectorXd x = Eigen::VectorXd::Zero(varList.size());
+        std::vector<Eigen::VectorXd> xList;
+        std::vector<double> yVals;
         for (int iter=0; iter<maxIters; iter++) {
 
             // Check the objective
@@ -629,34 +643,115 @@ int main(int argc, char* argv[]) {
                 }
             }
 
-            // Linear projection
-            Eigen::VectorXd x = Eigen::VectorXd::Zero(varList.size());
+            // Convert to a vector
             for (int i=0; i<varList.size(); i++) {
                 x(i) = varVals[varList[i]].real();
             }
             double errorLin = (A*x - b).norm();
-            //linSolver.setTolerance(std::min(prevLinError / 10.0, 1e-3));
-            linSolver.setTolerance(1e-8);
+
+            // Linear projection
+            linSolver.setTolerance(std::min(prevLinError / 100.0, 1e-3));
+            prevLinError = errorLin;
             Eigen::VectorXd projX = linSolver.solveWithGuess(b, x);
             for (int i=0; i<varList.size(); i++) {
                 varVals[varList[i]] = projX(i);
             }
-            prevLinError = errorLin;
+
+            // Average the two vectors
+            Eigen::VectorXd avgX = (x + projX) / 2;
+            xList.push_back(avgX);
+            yVals.push_back(newObjVal);
+            if (xList.size() == 5) {
+
+                // Line search to minimize A(x+beta) - b
+                Eigen::VectorXd beta = xList[xList.size()-1] - xList[xList.size()-2];
+                //beta /= beta.norm();
+                //beta *= avgX.norm();
+                double bestStep = 0;
+                double bestError = 1e10;
+                for (double step=1; step>=1e-5; step/=2) {
+                    Eigen::VectorXd newX = avgX + step * beta;
+                    double error = (A*newX - b).norm();
+                    if (error < bestError) {
+                        bestError = error;
+                        bestStep = step;
+                    }
+                    if (error < tolerance) {
+                        break;
+                    }
+                }
+
+                avgX += bestStep*beta;
+
+                for (int i=0; i<varList.size(); i++) {
+                    varVals[varList[i]] = avgX(i);
+                }
+
+                xList = {};
+
+            }
 
             // Per iteration output
-            if (verbosity >= 1) {
-                std::cout << iter << " " << newObjVal << " " << minEig << " " << errorLin << "           \r" << std::flush;
+            if (verbosity == -1) {
+                for (int i=0; i<varList.size(); i++) {
+                    std::cout << x(i);
+                    if (i < varList.size()-1) {
+                        std::cout << "\t ";
+                    } else {
+                        std::cout << std::endl;
+                    }
+                }
+                for (int i=0; i<varList.size(); i++) {
+                    std::cout << projX(i);
+                    if (i < varList.size()-1) {
+                        std::cout << "\t ";
+                    } else {
+                        std::cout << std::endl;
+                    }
+                }
+                for (int i=0; i<varList.size(); i++) {
+                    std::cout << avgX(i);
+                    if (i < varList.size()-1) {
+                        std::cout << "\t ";
+                    } else {
+                        std::cout << std::endl;
+                    }
+                }
+            } else if (verbosity >= 1) {
+                std::cout << iter << " " << newObjVal << " " << minEig << " " << errorLin << " " << stepSize << "           \r" << std::flush;
             }
 
             // Stopping condition
             if (std::abs(errorLin) < tolerance && minEig > -tolerance) {
                 break;
+
+                // Every so often, take a step towards the objective
+                //for (auto& mon : vars) {
+                    //if (objective.contains(mon)) {
+                        //varVals[mon] += stepSize * objective[mon];
+                    //}
+                //}
+                //for (auto& mon : vars) {
+                    //if (objective.contains(mon)) {
+                        //if (objective[mon].real() > 0) {
+                            //varVals[mon] = distance;
+                        //} else {
+                            //varVals[mon] = -distance;
+                        //}
+                    //}
+                //}
+                //stepSize *= 0.5;
+                //if (stepSize < 1e-8) {
+                    //break;
+                //}
+
             }
 
         }
 
         if (verbosity >= 1) {
             std::cout << std::endl;
+            varVals[Mon()] = 1;
             std::cout << "Final objective: " << objective.eval(varVals).real() << std::endl;
             Eigen::MatrixXcd X = replaceVariables(momentMatrices[0], varVals);
             if (verbosity >= 3) {
@@ -717,12 +812,14 @@ int main(int argc, char* argv[]) {
     // Convert to MOSEK form and solve
     std::pair<int,int> varBounds = {-1, 1};
     if (useDual) {
-        varBounds = {-10000, 10000};
+        varBounds = {-100000, 100000};
     }
     double res = 0;
     if (solver == "MOSEK") {
+        std::cout << "Solving with MOSEK..." << std::endl;
         res = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, varBounds);
     } else if (solver == "SCS") {
+        std::cout << "Solving with SCS..." << std::endl;
         res = solveSCS(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, varBounds);
     }
     if (useDual) {

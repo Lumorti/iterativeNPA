@@ -428,8 +428,6 @@ void primalToDual(Poly& objective, std::vector<std::vector<std::vector<Poly>>>& 
         
     // Define C
     int matSize = momentMatrices[0].size();
-    std::cout << "Matrix width: " << matSize << std::endl;
-    std::cout << "Forming C matrix..." << std::endl;
     Eigen::SparseMatrix<double> C(matSize, matSize);
     std::vector<Eigen::Triplet<double>> coeffsC;
     std::set<Mon> monsUsed;
@@ -456,7 +454,6 @@ void primalToDual(Poly& objective, std::vector<std::vector<std::vector<Poly>>>& 
     }
 
     // Define the A matrices and b vector
-    std::cout << "Forming A matrices..." << std::endl;
     std::vector<Eigen::SparseMatrix<double>> As;
     std::vector<double> b;
     for (int i=0; i<momentMatrices[0].size(); i++) {
@@ -487,7 +484,7 @@ void primalToDual(Poly& objective, std::vector<std::vector<std::vector<Poly>>>& 
                 } else {
                     Mon monomToFind = term.first;
                     std::pair<int, int> loc = monLocs[monomToFind];
-                    if (loc.first != i || loc.second != j) {
+                    if (!(loc.first == i && loc.second == j) && !(loc.first == j && loc.second == i)) {
                         if (i == j) { 
                             coeffsA.push_back(Eigen::Triplet<double>(loc.first, loc.second, -std::real(term.second)));
                         } else {
@@ -519,33 +516,8 @@ void primalToDual(Poly& objective, std::vector<std::vector<std::vector<Poly>>>& 
     }
 
     // Convert the objective to the dual constraints C-\sum_i y_i A_i >= 0
-    std::cout << "Converting to dual constraints..." << std::endl;
     std::vector<std::vector<Poly>> newMomentMat(matSize, std::vector<Poly>(matSize, Poly()));
     int newVarInd = b.size();
-
-    //for (int i=0; i<matSize; i++) {
-        //for (int j=i; j<matSize; j++) {
-            ////if (std::abs(C[i][j]) > 1e-10) {
-            ////if (std::abs(C.coeff(i, j)) > 1e-10) {
-                ////if (variableObjective) {
-                    ////Mon newMon("<E" + std::to_string(newVarInd) + ">");
-                    ////newMomentMat[i][j] = Poly(newMon);
-                    ////newVarInd++;
-                ////} else {
-                    //////newMomentMat[i][j][Mon()] = C[i][j];
-                    ////newMomentMat[i][j] = Poly(C.coeff(i, j));
-                ////}
-            ////}
-            //for (int k=0; k<As.size(); k++) {
-                ////if (std::abs(As[k][i][j]) > 1e-10) {
-                //if (std::abs(As[k].coeff(i, j)) > 1e-10) {
-                    ////newMomentMat[i][j][Mon("<D" + std::to_string(k) + ">")] -= As[k][i][j];
-                    //newMomentMat[i][j][Mon("<D" + std::to_string(k) + ">")] -= As[k].coeff(i, j);
-                //}
-            //}
-        //}
-    //}
-
     for (int k=0; k<C.outerSize(); ++k) {
         for (Eigen::SparseMatrix<double>::InnerIterator it(C, k); it; ++it) {
             int i = it.row();
