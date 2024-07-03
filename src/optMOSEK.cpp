@@ -363,6 +363,17 @@ double solveMOSEK(Poly obj, std::vector<std::vector<std::vector<Poly>>>& psd, st
             std::cout << "Num zero eig: " << numZeroEig << std::endl;
             std::cout << "Num pos eig: " << numPosEig << std::endl;
 
+            // Check the diagonal dominance
+             for (int i=0; i<A.rows(); i++) {
+                double rowSum = 0;
+                for (int j=0; j<A.cols(); j++) {
+                    if (i != j) {
+                        rowSum += std::abs(A(i, j));
+                    }
+                }
+                std::cout << "Diag = " << std::abs(A(i, i)) << " Row sum = " << rowSum << " Ratio = " << std::abs(A(i, i))/rowSum << std::endl;
+            }           
+
             // Get the SVD
             //Eigen::JacobiSVD<Eigen::MatrixXd> svd(A.real(), Eigen::ComputeThinU | Eigen::ComputeThinV);
             //Eigen::MatrixXd U = svd.matrixU();
