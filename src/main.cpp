@@ -102,6 +102,7 @@ int main(int argc, char* argv[]) {
 
         // Randomized version for arbitrary number of inputs TODO
         // for -S 1 -RXX22 100
+        // SCS 34s 1044
         // 43s 2842 1068
         } else if (argAsString == "--RXX22") {
             int numInputs = std::stoi(argv[i+1]);
@@ -696,13 +697,11 @@ int main(int argc, char* argv[]) {
             Eigen::VectorXd eigVals = es.eigenvalues().real();
             Eigen::MatrixXd eigVecs = es.eigenvectors().real();
             double minEig = eigVals.minCoeff();
-
-            Eigen::MatrixXd proj = Eigen::MatrixXd::Zero(X.rows(), X.cols());
+            Eigen::MatrixXd diagEigVals = Eigen::MatrixXd::Zero(X.rows(), X.cols());
             for (int i=0; i<eigVals.size(); i++) {
-                if (eigVals(i) > 0) {
-                    proj += eigVals(i) * eigVecs.col(i) * eigVecs.col(i).transpose();
-                }
+                diagEigVals(i, i) = std::max(eigVals(i), 0.0);
             }
+            Eigen::MatrixXd proj = eigVecs * diagEigVals * eigVecs.transpose();
             for (int i=0; i<proj.rows(); i++) {
                 for (int j=i; j<proj.cols(); j++) {
                     varVals[momentMatrices[0][i][j].getKey()] = proj(i, j);
@@ -716,7 +715,7 @@ int main(int argc, char* argv[]) {
             double errorLin = (A*x - b).norm();
 
             // Linear projection
-            linSolver.setTolerance(std::min(prevLinError / 100.0, 1e-3));
+            linSolver.setTolerance(std::min(prevLinError / 10.0, 1e-3));
             Eigen::VectorXd projX = linSolver.solveWithGuess(b, x);
             for (int i=0; i<varList.size(); i++) {
                 varVals[varList[i]] = projX(i);
@@ -726,35 +725,38 @@ int main(int argc, char* argv[]) {
             Eigen::VectorXd avgX = (x + projX) / 2;
             xList.push_back(avgX);
             yVals.push_back(newObjVal);
-            if (xList.size() == 10000000) {
+            //for (int i=0; i<varList.size(); i++) {
+                //varVals[varList[i]] = avgX(i);
+            //}
+            //if (xList.size() == 10000000) {
 
-                // Line search to minimize A(x+beta) - b
-                Eigen::VectorXd beta = xList[xList.size()-1] - xList[xList.size()-2];
-                //beta /= beta.norm();
-                //beta *= avgX.norm();
-                double bestStep = 0;
-                double bestError = 1e10;
-                for (double step=1; step>=1e-5; step/=2) {
-                    Eigen::VectorXd newX = avgX + step * beta;
-                    double error = (A*newX - b).norm();
-                    if (error < bestError) {
-                        bestError = error;
-                        bestStep = step;
-                    }
-                    if (error < tolerance) {
-                        break;
-                    }
-                }
+                //// Line search to minimize A(x+beta) - b
+                //Eigen::VectorXd beta = xList[xList.size()-1] - xList[xList.size()-2];
+                ////beta /= beta.norm();
+                ////beta *= avgX.norm();
+                //double bestStep = 0;
+                //double bestError = 1e10;
+                //for (double step=1; step>=1e-5; step/=2) {
+                    //Eigen::VectorXd newX = avgX + step * beta;
+                    //double error = (A*newX - b).norm();
+                    //if (error < bestError) {
+                        //bestError = error;
+                        //bestStep = step;
+                    //}
+                    //if (error < tolerance) {
+                        //break;
+                    //}
+                //}
 
-                avgX += bestStep*beta;
+                //avgX += bestStep*beta;
 
-                for (int i=0; i<varList.size(); i++) {
-                    varVals[varList[i]] = avgX(i);
-                }
+                //for (int i=0; i<varList.size(); i++) {
+                    //varVals[varList[i]] = avgX(i);
+                //}
 
-                xList = {};
+                //xList = {};
 
-            }
+            //}
 
             // Calculate how long each iteration takes
             std::chrono::steady_clock::time_point timeFinished = std::chrono::steady_clock::now();
