@@ -53,7 +53,7 @@ int main(int argc, char* argv[]) {
     int maxIters = 10000000;
     int numCores = 1;
     bool use01 = false;
-    double stepSize = 0.001;
+    double stepSize = 100;
     double tolerance = 1e-6;
     std::string solver = "MOSEK";
     std::string seed = "";
@@ -101,9 +101,11 @@ int main(int argc, char* argv[]) {
             problemName = "R3322";
 
         // Randomized version for arbitrary number of inputs TODO
+        //
         // for -S 1 -RXX22 100
         // SCS 34s 1044
-        // 43s 2842 1068
+        // 43s 2842 1068 (ICFO)
+        // 28s 2839 1068 (home 8)
         } else if (argAsString == "--RXX22") {
             int numInputs = std::stoi(argv[i+1]);
             bellFunc = Poly();
@@ -573,6 +575,7 @@ int main(int argc, char* argv[]) {
         }
 
         // Get an easy bound by setting vars to the identity * minimum eigen
+        std::map<Mon, std::complex<double>> varVals0;
         if (verbosity >= 1) {
             std::set<Mon> vars0;
             std::set<Mon> varsDiag;
@@ -580,7 +583,6 @@ int main(int argc, char* argv[]) {
             for (int i=0; i<momentMatrices[0].size(); i++) {
                 varsDiag.insert(momentMatrices[0][i][i].getKey());
             }
-            std::map<Mon, std::complex<double>> varVals0;
             for (auto& mon : vars0) {
                 varVals0[mon] = 0;
             }
@@ -592,6 +594,10 @@ int main(int argc, char* argv[]) {
             }
             double easyBound = -objective.eval(varVals0).real();
             std::cout << "Center bound: " << easyBound << std::endl;
+            //X0 = replaceVariables(momentMatrices[0], varVals0).real();
+            //es.compute(X0);
+            //std::cout << "Min eig after: " << es.eigenvalues().minCoeff() << std::endl;
+
         }
 
         // Create new moment matrix and then add equalities
@@ -645,6 +651,9 @@ int main(int argc, char* argv[]) {
             } else {
                 varVals[mon] = 0;
             }
+            //if (varVals0.count(mon) > 0) {
+                //varVals[mon] = varVals0[mon];
+            //}
         }
 
         // The matrix defining the linear constraints
@@ -675,10 +684,31 @@ int main(int argc, char* argv[]) {
 
         // Set up the linear solver
         Eigen::LeastSquaresConjugateGradient<Eigen::SparseMatrix<double>> linSolver;
-        linSolver.compute(A);
+        linSolver.setTolerance(tolerance/10.0);
+
+        // Precaculate the pseudo-inverse
+        std::cout << "Calculating inverse..." << std::endl;
+        Eigen::SparseMatrix<double> ASquare = A * A.transpose();
+        linSolver.compute(ASquare);
+        Eigen::SparseMatrix<double> I(ASquare.cols(), ASquare.cols());
+        I.setIdentity();
+        Eigen::SparseMatrix<double> APseudoSparse = A.transpose() * linSolver.solve(I);
+        //std::cout << "Making sparse..." << std::endl;
+        //std::vector<Eigen::Triplet<double>> tripletListPseudo;
+        //for (int i=0; i<APseudo.rows(); i++) {
+            //for (int j=0; j<APseudo.cols(); j++) {
+                //if (std::abs(APseudo(i, j)) > 1e-10) {
+                    //tripletListPseudo.push_back(Eigen::Triplet<double>(i, j, APseudo(i, j)));
+                //}
+            //}
+        //}
+        //Eigen::SparseMatrix<double> APseudoSparse(APseudo.rows(), APseudo.cols());
+        //APseudoSparse.setFromTriplets(tripletListPseudo.begin(), tripletListPseudo.end());
+        std::cout << "APseudo has size: " << APseudoSparse.rows() << " " << APseudoSparse.cols() << std::endl;
+        std::cout << "APseudo has num nonzeros: " << APseudoSparse.nonZeros() << std::endl;
 
         // Keep iterating until reaching limit or convergence TODO
-        stepSize = 1;
+        linSolver.compute(A);
         double prevMinEig = -1;
         double prevLinError = 1e-3;
         Eigen::VectorXd x = Eigen::VectorXd::Zero(varList.size());
@@ -712,51 +742,21 @@ int main(int argc, char* argv[]) {
             for (int i=0; i<varList.size(); i++) {
                 x(i) = varVals[varList[i]].real();
             }
-            double errorLin = (A*x - b).norm();
+            Eigen::VectorXd errVec = A*x - b;
+            double errorLin = errVec.norm();
 
             // Linear projection
-            linSolver.setTolerance(std::min(prevLinError / 10.0, 1e-3));
-            Eigen::VectorXd projX = linSolver.solveWithGuess(b, x);
+            //linSolver.setTolerance(std::min(prevLinError / 100.0, 1e-6));
+            //linSolver.setTolerance(tolerance/10.0);
+            //Eigen::VectorXd projX = linSolver.solveWithGuess(b, x);
+            //Eigen::VectorXd projX = x - APseudoDense * errVec;
+            Eigen::VectorXd projX = x - APseudoSparse * errVec;
             for (int i=0; i<varList.size(); i++) {
                 varVals[varList[i]] = projX(i);
             }
 
             // Average the two vectors
             Eigen::VectorXd avgX = (x + projX) / 2;
-            xList.push_back(avgX);
-            yVals.push_back(newObjVal);
-            //for (int i=0; i<varList.size(); i++) {
-                //varVals[varList[i]] = avgX(i);
-            //}
-            //if (xList.size() == 10000000) {
-
-                //// Line search to minimize A(x+beta) - b
-                //Eigen::VectorXd beta = xList[xList.size()-1] - xList[xList.size()-2];
-                ////beta /= beta.norm();
-                ////beta *= avgX.norm();
-                //double bestStep = 0;
-                //double bestError = 1e10;
-                //for (double step=1; step>=1e-5; step/=2) {
-                    //Eigen::VectorXd newX = avgX + step * beta;
-                    //double error = (A*newX - b).norm();
-                    //if (error < bestError) {
-                        //bestError = error;
-                        //bestStep = step;
-                    //}
-                    //if (error < tolerance) {
-                        //break;
-                    //}
-                //}
-
-                //avgX += bestStep*beta;
-
-                //for (int i=0; i<varList.size(); i++) {
-                    //varVals[varList[i]] = avgX(i);
-                //}
-
-                //xList = {};
-
-            //}
 
             // Calculate how long each iteration takes
             std::chrono::steady_clock::time_point timeFinished = std::chrono::steady_clock::now();
@@ -824,27 +824,6 @@ int main(int argc, char* argv[]) {
             prevMinEig = minEig;
             if (std::abs(errorLin) < tolerance && minEig > -tolerance) {
                 break;
-
-                // Every so often, take a step towards the objective
-                //for (auto& mon : vars) {
-                    //if (objective.contains(mon)) {
-                        //varVals[mon] += stepSize * objective[mon];
-                    //}
-                //}
-                //for (auto& mon : vars) {
-                    //if (objective.contains(mon)) {
-                        //if (objective[mon].real() > 0) {
-                            //varVals[mon] = distance;
-                        //} else {
-                            //varVals[mon] = -distance;
-                        //}
-                    //}
-                //}
-                //stepSize *= 0.5;
-                //if (stepSize < 1e-8) {
-                    //break;
-                //}
-
             }
 
         }
