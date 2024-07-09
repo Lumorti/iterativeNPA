@@ -104,8 +104,14 @@ int main(int argc, char* argv[]) {
         //
         // for -S 1 -RXX22 100
         // SCS 34s 1044
-        // 43s 2842 1068 (ICFO)
-        // 28s 2839 1068 (home 8)
+        // PRJ 28s 1068 2839i
+        // CEN  0s 1137
+        //
+        // for -S 1 -RXX22 200
+        // SCS 61m 3009
+        // PRJ  7m 3069 4507i
+        // CEN  0m 3274
+        //
         } else if (argAsString == "--RXX22") {
             int numInputs = std::stoi(argv[i+1]);
             bellFunc = Poly();
