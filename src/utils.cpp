@@ -434,7 +434,7 @@ void primalToDual(Poly& objective, std::vector<std::vector<std::vector<Poly>>>& 
     for (int j=0; j<momentMatrices[0].size(); j++) {
         for (int k=0; k<j; k++) {
             Mon key = momentMatrices[0][j][k].getKey();
-            if (!monsUsed.count(key)) {
+            if (!monsUsed.count(key) && objective.contains(key)) {
                 coeffsC.push_back(Eigen::Triplet<double>(j, k, -std::real(objective[key]) / 2));
                 coeffsC.push_back(Eigen::Triplet<double>(k, j, -std::real(objective[key]) / 2));
                 monsUsed.insert(key);

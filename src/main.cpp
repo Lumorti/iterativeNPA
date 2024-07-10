@@ -569,6 +569,124 @@ int main(int argc, char* argv[]) {
 
     //}
 
+    // Linearized SDP TODO
+    if (testing == 6) {
+
+        // Starting output
+        if (verbosity >= 1) {
+            std::cout << "Moment matrix has size " << momentMatrices[0].size() << std::endl;
+            std::cout << "Starting linearization..." << std::endl;
+        }
+
+        // Generate the random vectors
+        if (verbosity >= 1) {
+            std::cout << "Generating random vectors..." << std::endl;
+        }
+        int numVecs = int(stepSize);
+        Eigen::MatrixXd randomVecs = Eigen::MatrixXd::Random(numVecs, momentMatrices[0].size());
+
+        // Get an easy bound by setting vars to the identity * minimum eigen
+        std::map<Mon, std::complex<double>> varVals0;
+        std::set<Mon> vars0;
+        std::set<Mon> varsDiag;
+        addVariables(vars0, momentMatrices[0]);
+        for (int i=0; i<momentMatrices[0].size(); i++) {
+            varsDiag.insert(momentMatrices[0][i][i].getKey());
+        }
+        for (auto& mon : vars0) {
+            varVals0[mon] = 0;
+        }
+        Eigen::MatrixXd X0 = replaceVariables(momentMatrices[0], varVals0).real();
+        Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es(X0);
+        double minEig = es.eigenvalues().minCoeff();
+        for (auto& mon : varsDiag) {
+            varVals0[mon] = minEig;
+        }
+        double easyBound = -objective.eval(varVals0).real();
+        std::cout << "Center bound: " << easyBound << std::endl;
+        X0 = replaceVariables(momentMatrices[0], varVals0).real();
+        es.compute(X0);
+        Eigen::MatrixXd X0EigVecs = es.eigenvectors().real();
+        int nonRandomCount = 0;
+        for (int i=0; i<std::min(numVecs, int(X0EigVecs.cols())); i++) {
+            randomVecs.row(i) = X0EigVecs.col(i).transpose();
+            nonRandomCount++;
+        }
+        if (nonRandomCount < numVecs) {
+            for (int i=0; i<momentMatrices[0].size(); i++) {
+                randomVecs.row(nonRandomCount) = Eigen::MatrixXd::Zero(1, momentMatrices[0].size());
+                randomVecs(nonRandomCount, i) = 1;
+                nonRandomCount++;
+                if (nonRandomCount >= numVecs) {
+                    break;
+                }
+            }
+            
+        }
+
+        // For now build the full matrix as the sum of the projectors
+        if (verbosity >= 1) {
+            std::cout << "Building the full matrix..." << std::endl;
+        }
+        std::vector<std::vector<Poly>> momentMatEigens(momentMatrices[0].size(), std::vector<Poly>(momentMatrices[0].size(), Poly()));
+        for (int i=0; i<numVecs; i++) {
+            Eigen::MatrixXd proj = randomVecs.row(i).transpose() * randomVecs.row(i);
+            Mon newVar("<L" + std::to_string(i) + ">");
+            for (int j=0; j<momentMatrices[0].size(); j++) {
+                for (int k=0; k<momentMatrices[0][j].size(); k++) {
+                    momentMatEigens[j][k] += newVar * proj(j, k);
+                }
+            }
+            constraintsPositive.push_back(Poly(newVar));
+        }
+
+        // Add the equality constraints
+        if (verbosity >= 1) {
+            std::cout << "Adding the equality constraints..." << std::endl;
+        }
+        for (int j=0; j<momentMatrices[0].size(); j++) {
+            for (int k=0; k<momentMatrices[0][j].size(); k++) {
+                constraintsZero.push_back(momentMatEigens[j][k] - momentMatrices[0][j][k]);
+            }
+        }
+
+        // Set the objective
+        //if (verbosity >= 1) {
+            //std::cout << "Setting the objective..." << std::endl;
+        //}
+        //Poly newObj;
+        //std::set<Mon> monsUsed;
+        //for (int j=0; j<momentMatrices[0].size(); j++) {
+            //for (int k=0; k<j; k++) {
+                //Mon key = momentMatrices[0][j][k].getKey();
+                //if (!monsUsed.count(key)) {
+                    //newObj += momentMatEigens[j][k] * momentMatrices[0][j][k].getValue();
+                    //monsUsed.insert(key);
+                //}
+            //}
+        //}
+        //objective = newObj;
+
+        // Output things if super verbose
+        if (verbosity >= 3) {
+            std::cout << "New moment matrix: " << std::endl;
+            std::cout << momentMatEigens << std::endl;
+            std::cout << "New equality constraints: " << std::endl;
+            std::cout << constraintsZero << std::endl;
+            std::cout << "New positivity constraints: " << std::endl;
+            std::cout << constraintsPositive << std::endl;
+        }
+
+        // Solve the linear program with MOSEK
+        std::map<Mon, std::complex<double>> varVals;
+        momentMatrices = {};
+        double res = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, {-100000, 100000}, &varVals);
+        std::cout << "Result: " << res << std::endl;
+
+        return 0;
+
+    }
+
     // Go very far in the objective, then project back onto the set
     if (testing == 2) {
 
@@ -582,27 +700,25 @@ int main(int argc, char* argv[]) {
 
         // Get an easy bound by setting vars to the identity * minimum eigen
         std::map<Mon, std::complex<double>> varVals0;
+        std::set<Mon> vars0;
+        std::set<Mon> varsDiag;
+        addVariables(vars0, momentMatrices[0]);
+        for (int i=0; i<momentMatrices[0].size(); i++) {
+            varsDiag.insert(momentMatrices[0][i][i].getKey());
+        }
+        for (auto& mon : vars0) {
+            varVals0[mon] = 0;
+        }
+        Eigen::MatrixXd X0 = replaceVariables(momentMatrices[0], varVals0).real();
+        Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es(X0);
+        double minEig = es.eigenvalues().minCoeff();
+        for (auto& mon : varsDiag) {
+            varVals0[mon] = minEig;
+        }
+        double easyBound = -objective.eval(varVals0).real();
+        Eigen::MatrixXd X0EigVecs = es.eigenvectors().real();
         if (verbosity >= 1) {
-            std::set<Mon> vars0;
-            std::set<Mon> varsDiag;
-            addVariables(vars0, momentMatrices[0]);
-            for (int i=0; i<momentMatrices[0].size(); i++) {
-                varsDiag.insert(momentMatrices[0][i][i].getKey());
-            }
-            for (auto& mon : vars0) {
-                varVals0[mon] = 0;
-            }
-            Eigen::MatrixXd X0 = replaceVariables(momentMatrices[0], varVals0).real();
-            Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es(X0);
-            double minEig = es.eigenvalues().minCoeff();
-            for (auto& mon : varsDiag) {
-                varVals0[mon] = minEig;
-            }
-            double easyBound = -objective.eval(varVals0).real();
             std::cout << "Center bound: " << easyBound << std::endl;
-            //X0 = replaceVariables(momentMatrices[0], varVals0).real();
-            //es.compute(X0);
-            //std::cout << "Min eig after: " << es.eigenvalues().minCoeff() << std::endl;
 
         }
 
@@ -834,6 +950,7 @@ int main(int argc, char* argv[]) {
 
         }
 
+        Eigen::MatrixXd eigVecs;
         if (verbosity >= 1) {
             std::cout << std::endl;
             varVals[Mon()] = 1;
@@ -858,6 +975,7 @@ int main(int argc, char* argv[]) {
             }
             Eigen::SelfAdjointEigenSolver<Eigen::MatrixXcd> es(X);
             double minEig = es.eigenvalues().minCoeff();
+            eigVecs = es.eigenvectors().real();
             std::cout << "Final min eig: " << minEig << std::endl;
             Eigen::VectorXd x = Eigen::VectorXd::Zero(varList.size());
             for (size_t i=0; i<varList.size(); i++) {
@@ -865,6 +983,79 @@ int main(int argc, char* argv[]) {
             }
             std::cout << "Final linear error: " << (A*x - b).norm() << std::endl;
         }
+
+        // Do t=6 after t=2  TODO
+        // Generate the random vectors
+        if (verbosity >= 1) {
+            std::cout << "Starting linearization..." << std::endl;
+            std::cout << "Generating random vectors..." << std::endl;
+        }
+        int numVecs = int(stepSize);
+        Eigen::MatrixXd randomVecs = Eigen::MatrixXd::Random(numVecs, momentMatrices[0].size());
+
+        // Fix some of the vectors
+        int nonRandomCount = 0;
+        if (nonRandomCount < numVecs) {
+            for (int i=0; i<X0EigVecs.cols(); i++) {
+                randomVecs.row(i) = X0EigVecs.col(i).transpose();
+                nonRandomCount++;
+                if (nonRandomCount >= numVecs) {
+                    break;
+                }
+            }
+        }
+        if (nonRandomCount < numVecs) {
+            for (int i=0; i<eigVecs.cols(); i++) {
+                randomVecs.row(nonRandomCount) = eigVecs.col(i).transpose();
+                nonRandomCount++;
+                if (nonRandomCount >= numVecs) {
+                    break;
+                }
+            }
+        }
+        //if (nonRandomCount < numVecs) {
+            //for (int i=0; i<momentMatrices[0].size(); i++) {
+                //randomVecs.row(nonRandomCount) = Eigen::MatrixXd::Zero(1, momentMatrices[0].size());
+                //randomVecs(nonRandomCount, i) = 1;
+                //nonRandomCount++;
+                //if (nonRandomCount >= numVecs) {
+                    //break;
+                //}
+            //}
+            
+        //}
+
+        // For now build the full matrix as the sum of the projectors
+        if (verbosity >= 1) {
+            std::cout << "Building the full matrix..." << std::endl;
+        }
+        std::vector<std::vector<Poly>> momentMatEigens(momentMatrices[0].size(), std::vector<Poly>(momentMatrices[0].size(), Poly()));
+        for (int i=0; i<numVecs; i++) {
+            Eigen::MatrixXd proj = randomVecs.row(i).transpose() * randomVecs.row(i);
+            Mon newVar("<L" + std::to_string(i) + ">");
+            for (int j=0; j<momentMatrices[0].size(); j++) {
+                for (int k=0; k<momentMatrices[0][j].size(); k++) {
+                    momentMatEigens[j][k] += newVar * proj(j, k);
+                }
+            }
+            constraintsPositive.push_back(Poly(newVar));
+        }
+
+        // Add the equality constraints
+        if (verbosity >= 1) {
+            std::cout << "Adding the equality constraints..." << std::endl;
+        }
+        for (int j=0; j<momentMatrices[0].size(); j++) {
+            for (int k=0; k<momentMatrices[0][j].size(); k++) {
+                constraintsZero.push_back(momentMatEigens[j][k] - momentMatrices[0][j][k]);
+            }
+        }
+
+        // Solve the linear program with MOSEK
+        varVals = {};
+        momentMatrices = {};
+        double res = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, {-100000, 100000}, &varVals);
+        std::cout << "Result: " << res << std::endl;
 
         return 0;
 
