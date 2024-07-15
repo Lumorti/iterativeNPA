@@ -164,10 +164,10 @@ double solveOptim(Poly objective, std::vector<Poly> cons, std::vector<std::vecto
     settings.print_level = verbosity - 1;
     settings.iter_max = 10000;
     settings.rel_objfn_change_tol = 1e-5;
-    settings.gd_settings.method = 0;
-    settings.lbfgs_settings.par_M = 10;
-    settings.lbfgs_settings.wolfe_cons_1 = 1e-3;
-    settings.lbfgs_settings.wolfe_cons_2 = 0.8;
+    //settings.gd_settings.method = 0;
+    //settings.lbfgs_settings.par_M = 10;
+    //settings.lbfgs_settings.wolfe_cons_1 = 1e-3;
+    //settings.lbfgs_settings.wolfe_cons_2 = 0.8;
     //settings.vals_bound = true;
     //settings.lower_bounds = -minEigen*Eigen::VectorXd::Ones(numVars);
     //settings.upper_bounds = minEigen*Eigen::VectorXd::Ones(numVars);

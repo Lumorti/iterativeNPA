@@ -1,5 +1,5 @@
 CXX=g++
-CXXFLAGS=-fmax-errors=3 -O3 -march=native -fopenmp
+CXXFLAGS=-fmax-errors=3 -O3 -march=native -fopenmp -pipe
 #CXXFLAGS=-g -fmax-errors=3 -O0 -fopenmp
 LIBSEIGEN= -I${EIGENHOME}
 LIBSMOSEK= -I${MSKHOME}/h -L${MSKHOME}/bin -Wl,-rpath-link,${MSKHOME}/bin -Wl,-rpath=${MSKHOME}/bin -lmosek64 -lfusion64

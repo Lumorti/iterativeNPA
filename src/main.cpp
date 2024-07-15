@@ -14,6 +14,10 @@
 // Import Spectra
 //#include <Spectra/SymEigsSolver.h>
 
+// Import Optim
+#define OPTIM_ENABLE_EIGEN_WRAPPERS
+#include "optim.hpp"
+
 // Local libs
 #include "poly.h"
 #include "utils.h"
@@ -38,6 +42,84 @@ std::map<Mon, std::complex<double>> operator-(const std::map<Mon, std::complex<d
     return res;
 }
 
+// The structure used to hold the data for the optimisation
+struct optimData {
+    Poly objective;
+    Eigen::SparseMatrix<double> A;
+    Eigen::VectorXd b;
+    std::vector<std::vector<Poly>> momentMatrix;
+    std::vector<Mon> varList;
+};
+
+// Cost/gradient function for optim
+static double gradFunction(const Eigen::VectorXd& x, Eigen::VectorXd* gradOut, void* optData) {
+    
+    // Recast this generic pointer into the correct format
+    optimData* optDataRecast = reinterpret_cast<optimData*>(optData);
+
+    // Convert the x vector into a map
+    std::map<Mon, std::complex<double>> xMap;
+    for (int i=0; i<x.size(); i++) {
+        xMap[optDataRecast->varList[i]] = x(i);
+    }
+
+    // Objective value
+    double obj = -optDataRecast->objective.eval(xMap).real();
+
+    // SDP projection
+    Eigen::MatrixXd X = replaceVariables(optDataRecast->momentMatrix, xMap).real();
+    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es(X);
+    Eigen::VectorXd eigVals = es.eigenvalues().real();
+    Eigen::MatrixXd eigVecs = es.eigenvectors().real();
+    double minEig = eigVals.minCoeff();
+    Eigen::MatrixXd diagEigVals = Eigen::MatrixXd::Zero(X.rows(), X.cols());
+    for (int i=0; i<eigVals.size(); i++) {
+        diagEigVals(i, i) = std::max(eigVals(i), 0.0);
+    }
+    Eigen::MatrixXd proj = eigVecs * diagEigVals * eigVecs.transpose();
+    for (int i=0; i<proj.rows(); i++) {
+        for (int j=i; j<proj.cols(); j++) {
+            xMap[optDataRecast->momentMatrix[i][j].getKey()] = proj(i, j);
+        }
+    }
+
+    // Convert back to a vector
+    Eigen::VectorXd xPos = Eigen::VectorXd::Zero(x.size());
+    for (int i=0; i<xMap.size(); i++) {
+        xPos(i) = xMap[optDataRecast->varList[i]].real();
+    }
+    Eigen::VectorXd errVec = optDataRecast->A*xPos - optDataRecast->b;
+    double errorLin = errVec.norm();
+
+    // Linear projection
+    Eigen::LeastSquaresConjugateGradient<Eigen::SparseMatrix<double>> linSolver;
+    linSolver.compute(optDataRecast->A);
+    linSolver.setTolerance(1e-10);
+    Eigen::VectorXd projX = linSolver.solveWithGuess(optDataRecast->b, xPos);
+
+    // The cost function to minimize
+    double cost = errorLin + std::pow(minEig, 2);
+
+    // Calculate the gradient
+    if (gradOut) {
+
+        // Reset the gradient
+        *gradOut = Eigen::VectorXd::Zero(x.size());
+
+        // Set the gradient
+        for (int i=0; i<gradOut->size(); i++) {
+            (*gradOut)(i) = x(i) - projX(i);
+        }
+
+        // Per iteration output TODO
+        std::cout << obj << " " << cost << " " << errorLin << " " << minEig << "               \r" << std::flush;
+
+    }
+
+    // Return the cost
+    return cost;
+
+}
 // Generic entry function
 int main(int argc, char* argv[]) {
 
@@ -569,7 +651,7 @@ int main(int argc, char* argv[]) {
 
     //}
 
-    // Linearized SDP TODO
+    // Linearized SDP
     if (testing == 6) {
 
         // Starting output
@@ -762,6 +844,9 @@ int main(int argc, char* argv[]) {
 
         // Starting point
         double distance = stepSize;
+        if (verbosity >= 1) {
+            std::cout << "Starting distance: " << distance << std::endl;
+        }
         std::map<Mon, std::complex<double>> varVals;
         for (auto& mon : vars) {
             if (objective.contains(mon)) {
@@ -773,9 +858,6 @@ int main(int argc, char* argv[]) {
             } else {
                 varVals[mon] = 0;
             }
-            //if (varVals0.count(mon) > 0) {
-                //varVals[mon] = varVals0[mon];
-            //}
         }
 
         // The matrix defining the linear constraints
@@ -807,150 +889,162 @@ int main(int argc, char* argv[]) {
         // Set up the linear solver
         Eigen::LeastSquaresConjugateGradient<Eigen::SparseMatrix<double>> linSolver;
         linSolver.setTolerance(tolerance/10.0);
-
-        // Precaculate the pseudo-inverse
-        std::cout << "Calculating inverse..." << std::endl;
-        Eigen::SparseMatrix<double> ASquare = A * A.transpose();
-        linSolver.compute(ASquare);
-        Eigen::SparseMatrix<double> I(ASquare.cols(), ASquare.cols());
-        I.setIdentity();
-        Eigen::SparseMatrix<double> APseudoSparse = A.transpose() * linSolver.solve(I);
-        //std::cout << "Making sparse..." << std::endl;
-        //std::vector<Eigen::Triplet<double>> tripletListPseudo;
-        //for (int i=0; i<APseudo.rows(); i++) {
-            //for (int j=0; j<APseudo.cols(); j++) {
-                //if (std::abs(APseudo(i, j)) > 1e-10) {
-                    //tripletListPseudo.push_back(Eigen::Triplet<double>(i, j, APseudo(i, j)));
-                //}
-            //}
-        //}
-        //Eigen::SparseMatrix<double> APseudoSparse(APseudo.rows(), APseudo.cols());
-        //APseudoSparse.setFromTriplets(tripletListPseudo.begin(), tripletListPseudo.end());
-        std::cout << "APseudo has size: " << APseudoSparse.rows() << " " << APseudoSparse.cols() << std::endl;
-        std::cout << "APseudo has num nonzeros: " << APseudoSparse.nonZeros() << std::endl;
+        linSolver.compute(A);
 
         // Keep iterating until reaching limit or convergence TODO
-        linSolver.compute(A);
-        double prevMinEig = -1;
-        double prevLinError = 1e-3;
-        Eigen::VectorXd x = Eigen::VectorXd::Zero(varList.size());
-        std::vector<Eigen::VectorXd> xList;
-        std::vector<double> yVals;
-        std::vector<int> prevMaxIters;
-        for (int iter=0; iter<maxIters; iter++) {
+        //double prevMinEig = -1;
+        //double prevLinError = 1e-3;
+        //Eigen::VectorXd x = Eigen::VectorXd::Zero(varList.size());
+        //std::vector<Eigen::VectorXd> xList;
+        //std::vector<int> prevMaxIters;
+        //for (int iter=0; iter<maxIters; iter++) {
 
-            // Check the objective
-            std::chrono::steady_clock::time_point timeStart = std::chrono::steady_clock::now();
-            double newObjVal = -objective.eval(varVals).real();
+            //// Check the objective
+            //std::chrono::steady_clock::time_point timeStart = std::chrono::steady_clock::now();
+            //double newObjVal = -objective.eval(varVals).real();
 
-            // SDP projection
-            Eigen::MatrixXd X = replaceVariables(momentMatrices[0], varVals).real();
-            Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es(X);
-            Eigen::VectorXd eigVals = es.eigenvalues().real();
-            Eigen::MatrixXd eigVecs = es.eigenvectors().real();
-            double minEig = eigVals.minCoeff();
-            Eigen::MatrixXd diagEigVals = Eigen::MatrixXd::Zero(X.rows(), X.cols());
-            for (int i=0; i<eigVals.size(); i++) {
-                diagEigVals(i, i) = std::max(eigVals(i), 0.0);
-            }
-            Eigen::MatrixXd proj = eigVecs * diagEigVals * eigVecs.transpose();
-            for (int i=0; i<proj.rows(); i++) {
-                for (int j=i; j<proj.cols(); j++) {
-                    varVals[momentMatrices[0][i][j].getKey()] = proj(i, j);
-                }
-            }
+            //// SDP projection
+            //Eigen::MatrixXd X = replaceVariables(momentMatrices[0], varVals).real();
+            //Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es(X);
+            //Eigen::VectorXd eigVals = es.eigenvalues().real();
+            //Eigen::MatrixXd eigVecs = es.eigenvectors().real();
+            //double minEig = eigVals.minCoeff();
+            //Eigen::MatrixXd diagEigVals = Eigen::MatrixXd::Zero(X.rows(), X.cols());
+            //for (int i=0; i<eigVals.size(); i++) {
+                //diagEigVals(i, i) = std::max(eigVals(i), 0.0);
+            //}
+            //Eigen::MatrixXd proj = eigVecs * diagEigVals * eigVecs.transpose();
+            //for (int i=0; i<proj.rows(); i++) {
+                //for (int j=i; j<proj.cols(); j++) {
+                    //varVals[momentMatrices[0][i][j].getKey()] = proj(i, j);
+                //}
+            //}
 
-            // Convert to a vector
-            for (int i=0; i<varList.size(); i++) {
-                x(i) = varVals[varList[i]].real();
-            }
-            Eigen::VectorXd errVec = A*x - b;
-            double errorLin = errVec.norm();
+            //// Convert to a vector
+            //for (int i=0; i<varList.size(); i++) {
+                //x(i) = varVals[varList[i]].real();
+            //}
+            //Eigen::VectorXd errVec = A*x - b;
+            //double errorLin = errVec.norm();
 
-            // Linear projection
+            //// Linear projection
             //linSolver.setTolerance(std::min(prevLinError / 100.0, 1e-6));
-            //linSolver.setTolerance(tolerance/10.0);
             //Eigen::VectorXd projX = linSolver.solveWithGuess(b, x);
-            //Eigen::VectorXd projX = x - APseudoDense * errVec;
-            Eigen::VectorXd projX = x - APseudoSparse * errVec;
-            for (int i=0; i<varList.size(); i++) {
-                varVals[varList[i]] = projX(i);
-            }
+            //for (int i=0; i<varList.size(); i++) {
+                //varVals[varList[i]] = projX(i);
+            //}
 
-            // Average the two vectors
-            Eigen::VectorXd avgX = (x + projX) / 2;
+            //// Aitken acceleration
+            ////xList.push_back(x);
+            //xList.push_back(projX);
+            //if (iter > 200 && xList.size() >= 3) {
+                //Eigen::VectorXd x1 = xList[xList.size()-1];
+                //Eigen::VectorXd x2 = xList[xList.size()-2];
+                //Eigen::VectorXd x3 = xList[xList.size()-3];
+                //Eigen::VectorXd top = x3 - x2;
+                //top = top.cwiseProduct(top);
+                //Eigen::VectorXd bottom = (x3 - x2) - (x2 - x1);
+                ////Eigen::VectorXd newX = x3 - top.cwiseQuotient(bottom);
+                //Eigen::VectorXd newX = x3;
+                //for (int i=0; i<newX.size(); i++) {
+                    //if (std::abs(bottom(i)) > 1e-10) {
+                        //newX(i) -= top(i) / bottom(i);
+                    //}
+                //}
+                //for (int i=0; i<varList.size(); i++) {
+                    //varVals[varList[i]] = newX(i);
+                //}
+                //xList = {};
+            //}
 
-            // Calculate how long each iteration takes
-            std::chrono::steady_clock::time_point timeFinished = std::chrono::steady_clock::now();
-            int perIter = std::chrono::duration_cast<std::chrono::milliseconds>(timeFinished - timeStart).count();
-            double changeInLinError = std::abs(errorLin / prevLinError);
-            double changeInMinEig = std::abs(minEig / prevMinEig);
-            if (changeInLinError > 1) {
-                changeInLinError = 0;
-            }
-            if (changeInMinEig > 1) {
-                changeInMinEig = 0;
-            }
-            int estimatedMaxIter;
-            if (changeInLinError > changeInMinEig) {
-                estimatedMaxIter = std::log(tolerance) / std::log(changeInLinError);
-            } else {
-                estimatedMaxIter = std::log(tolerance) / std::log(changeInMinEig);
-            }
-            if (estimatedMaxIter > 0) {
-                prevMaxIters.push_back(estimatedMaxIter);
-            }
-            if (prevMaxIters.size() > 5) {
-                prevMaxIters.erase(prevMaxIters.begin());
-            }
-            if (prevMaxIters.size() > 0) {
-                estimatedMaxIter = 0;
-                for (int i=0; i<prevMaxIters.size(); i++) {
-                    estimatedMaxIter += prevMaxIters[i];
-                }
-                estimatedMaxIter /= prevMaxIters.size();
-            }
+            //// Calculate how long each iteration takes
+            //std::chrono::steady_clock::time_point timeFinished = std::chrono::steady_clock::now();
+            //int perIter = std::chrono::duration_cast<std::chrono::milliseconds>(timeFinished - timeStart).count();
+            //double changeInLinError = std::abs(errorLin / prevLinError);
+            //double changeInMinEig = std::abs(minEig / prevMinEig);
+            //if (changeInLinError > 1) {
+                //changeInLinError = 0;
+            //}
+            //if (changeInMinEig > 1) {
+                //changeInMinEig = 0;
+            //}
+            //int estimatedMaxIter;
+            //if (changeInLinError > changeInMinEig) {
+                //estimatedMaxIter = std::log(tolerance) / std::log(changeInLinError);
+            //} else {
+                //estimatedMaxIter = std::log(tolerance) / std::log(changeInMinEig);
+            //}
+            //if (estimatedMaxIter > 0) {
+                //prevMaxIters.push_back(estimatedMaxIter);
+            //}
+            //if (prevMaxIters.size() > 5) {
+                //prevMaxIters.erase(prevMaxIters.begin());
+            //}
+            //if (prevMaxIters.size() > 0) {
+                //estimatedMaxIter = 0;
+                //for (int i=0; i<prevMaxIters.size(); i++) {
+                    //estimatedMaxIter += prevMaxIters[i];
+                //}
+                //estimatedMaxIter /= prevMaxIters.size();
+            //}
 
-            // Per iteration output
-            if (verbosity == -1) {
-                for (size_t i=0; i<varList.size(); i++) {
-                    std::cout << x(i);
-                    if (i < varList.size()-1) {
-                        std::cout << "\t ";
-                    } else {
-                        std::cout << std::endl;
-                    }
-                }
-                for (size_t i=0; i<varList.size(); i++) {
-                    std::cout << projX(i);
-                    if (i < varList.size()-1) {
-                        std::cout << "\t ";
-                    } else {
-                        std::cout << std::endl;
-                    }
-                }
-                for (size_t i=0; i<varList.size(); i++) {
-                    std::cout << avgX(i);
-                    if (i < varList.size()-1) {
-                        std::cout << "\t ";
-                    } else {
-                        std::cout << std::endl;
-                    }
-                }
-            } else if (verbosity >= 1) {
-                std::cout << std::setw(8) << iter << "i " << std::setw(12) << newObjVal << " " << std::setw(12) << minEig << " " << std::setw(12) << errorLin << " " << std::setw(6) << perIter << "ms/i " << std::setw(8) << estimatedMaxIter << "i           \r" << std::flush;
-            }
+            //// Per iteration output
+            //if (verbosity == -1) {
+                //for (size_t i=0; i<varList.size(); i++) {
+                    //std::cout << x(i);
+                    //if (i < varList.size()-1) {
+                        //std::cout << "\t ";
+                    //} else {
+                        //std::cout << std::endl;
+                    //}
+                //}
+                //for (size_t i=0; i<varList.size(); i++) {
+                    //std::cout << projX(i);
+                    //if (i < varList.size()-1) {
+                        //std::cout << "\t ";
+                    //} else {
+                        //std::cout << std::endl;
+                    //}
+                //}
+            //} else if (verbosity >= 1) {
+                //std::cout << std::setw(8) << iter << "i " << std::setw(12) << newObjVal << " " << std::setw(12) << minEig << " " << std::setw(12) << errorLin << " " << std::setw(6) << perIter << "ms/i " << std::setw(8) << " " << estimatedMaxIter << "i           \r" << std::flush;
+            //}
 
-            // Stopping condition
-            prevLinError = errorLin;
-            prevMinEig = minEig;
-            if (std::abs(errorLin) < tolerance && minEig > -tolerance) {
-                break;
-            }
+            //// Stopping condition
+            //prevLinError = errorLin;
+            //prevMinEig = minEig;
+            //if (std::abs(errorLin) < tolerance && minEig > -tolerance) {
+                //break;
+            //}
 
+        //}
+
+        // Convert to a vector
+        Eigen::VectorXd x = Eigen::VectorXd::Zero(varList.size());
+        for (int i=0; i<varList.size(); i++) {
+            x(i) = varVals[varList[i]].real();
         }
 
-        Eigen::MatrixXd eigVecs;
+        // Test With Optim TODO
+        optimData optData;
+        optData.objective = objective;
+        optData.A = A;
+        optData.b = b;
+        optData.momentMatrix = momentMatrices[0];
+        optData.varList = varList;
+        optim::algo_settings_t settings;
+        settings.print_level = 0;
+        settings.iter_max = 10000;
+        settings.rel_objfn_change_tol = 1e-4;
+        settings.gd_settings.method = 2;
+        //bool success = optim::nm(x, gradFunction, &optData, settings);
+        //bool success = optim::gd(x, gradFunction, &optData, settings);
+        bool success = optim::lbfgs(x, gradFunction, &optData, settings);
+        for (int i=0; i<varList.size(); i++) {
+            varVals[varList[i]] = x(i);
+        }
+
+        // Verbose output of the final solution
         if (verbosity >= 1) {
             std::cout << std::endl;
             varVals[Mon()] = 1;
@@ -975,7 +1069,6 @@ int main(int argc, char* argv[]) {
             }
             Eigen::SelfAdjointEigenSolver<Eigen::MatrixXcd> es(X);
             double minEig = es.eigenvalues().minCoeff();
-            eigVecs = es.eigenvectors().real();
             std::cout << "Final min eig: " << minEig << std::endl;
             Eigen::VectorXd x = Eigen::VectorXd::Zero(varList.size());
             for (size_t i=0; i<varList.size(); i++) {
@@ -983,79 +1076,6 @@ int main(int argc, char* argv[]) {
             }
             std::cout << "Final linear error: " << (A*x - b).norm() << std::endl;
         }
-
-        // Do t=6 after t=2  TODO
-        // Generate the random vectors
-        if (verbosity >= 1) {
-            std::cout << "Starting linearization..." << std::endl;
-            std::cout << "Generating random vectors..." << std::endl;
-        }
-        int numVecs = int(stepSize);
-        Eigen::MatrixXd randomVecs = Eigen::MatrixXd::Random(numVecs, momentMatrices[0].size());
-
-        // Fix some of the vectors
-        int nonRandomCount = 0;
-        if (nonRandomCount < numVecs) {
-            for (int i=0; i<X0EigVecs.cols(); i++) {
-                randomVecs.row(i) = X0EigVecs.col(i).transpose();
-                nonRandomCount++;
-                if (nonRandomCount >= numVecs) {
-                    break;
-                }
-            }
-        }
-        if (nonRandomCount < numVecs) {
-            for (int i=0; i<eigVecs.cols(); i++) {
-                randomVecs.row(nonRandomCount) = eigVecs.col(i).transpose();
-                nonRandomCount++;
-                if (nonRandomCount >= numVecs) {
-                    break;
-                }
-            }
-        }
-        //if (nonRandomCount < numVecs) {
-            //for (int i=0; i<momentMatrices[0].size(); i++) {
-                //randomVecs.row(nonRandomCount) = Eigen::MatrixXd::Zero(1, momentMatrices[0].size());
-                //randomVecs(nonRandomCount, i) = 1;
-                //nonRandomCount++;
-                //if (nonRandomCount >= numVecs) {
-                    //break;
-                //}
-            //}
-            
-        //}
-
-        // For now build the full matrix as the sum of the projectors
-        if (verbosity >= 1) {
-            std::cout << "Building the full matrix..." << std::endl;
-        }
-        std::vector<std::vector<Poly>> momentMatEigens(momentMatrices[0].size(), std::vector<Poly>(momentMatrices[0].size(), Poly()));
-        for (int i=0; i<numVecs; i++) {
-            Eigen::MatrixXd proj = randomVecs.row(i).transpose() * randomVecs.row(i);
-            Mon newVar("<L" + std::to_string(i) + ">");
-            for (int j=0; j<momentMatrices[0].size(); j++) {
-                for (int k=0; k<momentMatrices[0][j].size(); k++) {
-                    momentMatEigens[j][k] += newVar * proj(j, k);
-                }
-            }
-            constraintsPositive.push_back(Poly(newVar));
-        }
-
-        // Add the equality constraints
-        if (verbosity >= 1) {
-            std::cout << "Adding the equality constraints..." << std::endl;
-        }
-        for (int j=0; j<momentMatrices[0].size(); j++) {
-            for (int k=0; k<momentMatrices[0][j].size(); k++) {
-                constraintsZero.push_back(momentMatEigens[j][k] - momentMatrices[0][j][k]);
-            }
-        }
-
-        // Solve the linear program with MOSEK
-        varVals = {};
-        momentMatrices = {};
-        double res = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, {-100000, 100000}, &varVals);
-        std::cout << "Result: " << res << std::endl;
 
         return 0;
 

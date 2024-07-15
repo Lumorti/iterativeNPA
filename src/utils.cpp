@@ -120,19 +120,31 @@ void addSingleMonomials(std::vector<Mon>& variables, Poly functional) {
 // Generate a moment matrix given the top row as polynomials
 std::vector<std::vector<Poly>> generateFromTopRow(std::vector<Poly> monomsInTopRow, int verbosity) {
 
+    // Convert to monomials
+    std::vector<Mon> monomsInTopRowMon;
+    for (size_t i=0; i<monomsInTopRow.size(); i++) {
+        monomsInTopRowMon.push_back(monomsInTopRow[i].getKey());
+    }
+
     // Generate all combinations of the top row
+    std::map<std::pair<Mon,Mon>,Poly> prodMap;
+    for (size_t i=0; i<monomsInTopRow.size(); i++) {
+        for (size_t j=i; j<monomsInTopRow.size(); j++) {
+            std::pair<Mon,Mon> key = {monomsInTopRowMon[i], monomsInTopRowMon[j]};
+            if (!prodMap.count(key)) {
+                Poly newPolynomial = monomsInTopRow[j].dagger() * monomsInTopRow[i];
+                newPolynomial.reduce();
+                prodMap[key] = newPolynomial;
+            }
+        }
+    }
+
+    // Form the moment matrix
     std::vector<std::vector<Poly>> matrixToReturn = std::vector<std::vector<Poly>>(monomsInTopRow.size(), std::vector<Poly>(monomsInTopRow.size()));
     for (size_t i=0; i<monomsInTopRow.size(); i++) {
         for (size_t j=i; j<monomsInTopRow.size(); j++) {
-
-            // Form the new polynomial
-            Poly newPolynomial = monomsInTopRow[j].dagger() * monomsInTopRow[i];
-            newPolynomial.reduce();
-
-            // Set the matrix elements
-            matrixToReturn[i][j] = newPolynomial;
-            matrixToReturn[j][i] = newPolynomial.conj();
-
+            matrixToReturn[i][j] = prodMap[{monomsInTopRowMon[i], monomsInTopRowMon[j]}];
+            matrixToReturn[j][i] = matrixToReturn[i][j].conj();
         }
     }
 
@@ -156,14 +168,19 @@ std::vector<std::vector<Poly>> generateFromTopRow(std::vector<Poly> monomsInTopR
         }
     }
 
-    // Remove the redundant rows/cols
+    // Remove the redundant elements from the top row
     std::sort(redundantRows.begin(), redundantRows.end(), std::greater<int>());
     for (size_t i=0; i<redundantRows.size(); i++) {
-        int row = redundantRows[i];
-        for (size_t j=0; j<matrixToReturn.size(); j++) {
-            matrixToReturn[j].erase(matrixToReturn[j].begin() + row);
+        monomsInTopRowMon.erase(monomsInTopRowMon.begin() + redundantRows[i]);
+    }
+
+    // Reform the moment matrix
+    matrixToReturn = std::vector<std::vector<Poly>>(monomsInTopRowMon.size(), std::vector<Poly>(monomsInTopRowMon.size()));
+    for (size_t i=0; i<monomsInTopRowMon.size(); i++) {
+        for (size_t j=i; j<monomsInTopRowMon.size(); j++) {
+            matrixToReturn[i][j] = prodMap[{monomsInTopRowMon[i], monomsInTopRowMon[j]}];
+            matrixToReturn[j][i] = matrixToReturn[i][j].conj();
         }
-        matrixToReturn.erase(matrixToReturn.begin() + row);
     }
 
     // Return the matrix
@@ -420,7 +437,7 @@ double rand(double min, double max) {
     return min + (max - min) * (double)rand() / RAND_MAX;
 }
 
-// Convert a primal SDP problem to a dual problem TODO switch to sparse
+// Convert a primal SDP problem to a dual problem
 void primalToDual(Poly& objective, std::vector<std::vector<std::vector<Poly>>>& momentMatrices, std::vector<Poly>& constraintsZero, std::vector<Poly>& constraintsPositive, bool variableObjective) {
 
     // First: put into into standard SDP form
@@ -508,16 +525,20 @@ void primalToDual(Poly& objective, std::vector<std::vector<std::vector<Poly>>>& 
     }
 
     // Convert the constraints to the dual objective b.y
-    Poly newObjective;
+    objective = Poly();
     for (int i=0; i<b.size(); i++) {
         if (std::abs(b[i]) > 1e-10) {
-            newObjective[Mon("<D" + std::to_string(i) + ">")] = b[i];
+            objective[Mon("<D" + std::to_string(i) + ">")] = b[i];
         }
     }
 
-    // Convert the objective to the dual constraints C-\sum_i y_i A_i >= 0
-    std::vector<std::vector<Poly>> newMomentMat(matSize, std::vector<Poly>(matSize, Poly()));
+    // We don't have any linear constraints
+    constraintsZero = {};
+    constraintsPositive = {};
+
+    // Convert the moment matrix to C-\sum_i y_i A_i >= 0
     int newVarInd = b.size();
+    momentMatrices = std::vector<std::vector<std::vector<Poly>>>(1, std::vector<std::vector<Poly>>(matSize, std::vector<Poly>(matSize)));
     for (int k=0; k<C.outerSize(); ++k) {
         for (Eigen::SparseMatrix<double>::InnerIterator it(C, k); it; ++it) {
             int i = it.row();
@@ -528,10 +549,10 @@ void primalToDual(Poly& objective, std::vector<std::vector<std::vector<Poly>>>& 
             if (std::abs(it.value()) > 1e-10) {
                 if (variableObjective) {
                     Mon newMon("<E" + std::to_string(newVarInd) + ">");
-                    newMomentMat[i][j] += Poly(newMon);
+                    momentMatrices[0][i][j] += Poly(newMon);
                     newVarInd++;
                 } else {
-                    newMomentMat[i][j] += it.value();
+                    momentMatrices[0][i][j] += it.value();
                 }
             }
         }
@@ -545,26 +566,18 @@ void primalToDual(Poly& objective, std::vector<std::vector<std::vector<Poly>>>& 
                     continue;
                 }
                 if (std::abs(it.value()) > 1e-10) {
-                    newMomentMat[i][j][Mon("<D" + std::to_string(k) + ">")] -= it.value();
+                    momentMatrices[0][i][j][Mon("<D" + std::to_string(k) + ">")] -= it.value();
                 }
             }
         }
     }
 
-    // We don't have any linear constraints
-    constraintsZero = {};
-    constraintsPositive = {};
-
     // Symmetrize the matrix
     for (int i=0; i<matSize; i++) {
         for (int j=i+1; j<matSize; j++) {
-            newMomentMat[j][i] = newMomentMat[i][j];
+            momentMatrices[0][j][i] = momentMatrices[0][i][j];
         }
     }
-
-    // Change the vars
-    momentMatrices = {newMomentMat};
-    objective = newObjective;
 
 }
 
