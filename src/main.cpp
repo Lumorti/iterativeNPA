@@ -11,8 +11,8 @@
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
 
-// Import Spectra
-//#include <Spectra/SymEigsSolver.h>
+// Import LBFGS
+#include <LBFGS.h>
 
 // Import Optim
 #define OPTIM_ENABLE_EIGEN_WRAPPERS
@@ -42,10 +42,87 @@ std::map<Mon, std::complex<double>> operator-(const std::map<Mon, std::complex<d
     return res;
 }
 
+class Optimizer {
+private:
+    Poly objective;
+    Eigen::SparseMatrix<double> A;
+    Eigen::LeastSquaresConjugateGradient<Eigen::SparseMatrix<double>>* linSolver;
+    Eigen::VectorXd b;
+    std::vector<std::vector<Poly>> momentMatrix;
+    std::vector<Mon> varList;
+public:
+    Optimizer(Poly objective_, Eigen::SparseMatrix<double> A_, Eigen::LeastSquaresConjugateGradient<Eigen::SparseMatrix<double>>* linSolver_, Eigen::VectorXd b_, std::vector<std::vector<Poly>> momentMatrix_, std::vector<Mon> varList_) : objective(objective_), A(A_), linSolver(linSolver_), b(b_), momentMatrix(momentMatrix_), varList(varList_) {}
+    double operator()(const Eigen::VectorXd& x, Eigen::VectorXd& grad) {
+
+        // Convert the x vector into a map
+        std::map<Mon, std::complex<double>> xMap;
+        for (int i=0; i<x.size(); i++) {
+            xMap[varList[i]] = x(i);
+        }
+
+        // Objective value
+        double obj = -objective.eval(xMap).real();
+
+        // Calculate linear error
+        double errorLin = (A*x - b).norm();
+
+        // Calculate the eigenspectrum
+        Eigen::MatrixXd X = replaceVariables(momentMatrix, xMap).real();
+        Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es(X);
+        Eigen::VectorXd eigVals = es.eigenvalues().real();
+        Eigen::MatrixXd eigVecs = es.eigenvectors().real();
+        double minEig = eigVals.minCoeff();
+
+        // The cost function to minimize
+        double cost = errorLin*errorLin + minEig*minEig;
+
+        // SDP projection
+        Eigen::MatrixXd diagEigVals = Eigen::MatrixXd::Zero(X.rows(), X.cols());
+        for (int i=0; i<eigVals.size(); i++) {
+            diagEigVals(i, i) = std::max(eigVals(i), 0.0);
+        }
+        Eigen::MatrixXd proj = eigVecs * diagEigVals * eigVecs.transpose();
+        for (int i=0; i<proj.rows(); i++) {
+            for (int j=i; j<proj.cols(); j++) {
+                xMap[momentMatrix[i][j].getKey()] = proj(i, j);
+            }
+        }
+
+        // Convert back to a vector
+        Eigen::VectorXd xPos = Eigen::VectorXd::Zero(x.size());
+        for (int i=0; i<xMap.size(); i++) {
+            xPos(i) = xMap[varList[i]].real();
+        }
+        Eigen::VectorXd errVec = A*xPos - b;
+
+        // Linear projection
+        Eigen::VectorXd projX = linSolver->solveWithGuess(b, xPos);
+
+        // Set the gradient
+        grad = Eigen::VectorXd::Zero(x.size());
+        for (int i=0; i<grad.size(); i++) {
+            grad(i) = x(i) - projX(i);
+        }
+
+        // Early convergence
+        if (errorLin < 1e-7 && minEig > -1e-7) {
+            grad = Eigen::VectorXd::Zero(x.size());
+        }
+
+        // Per iteration output
+        std::cout << "obj=" << obj << "  cost=" << cost << "  lin=" << errorLin << "  eig=" << minEig << "               \r" << std::flush;
+
+        // Return the cost
+        return cost;
+
+    }
+};
+
 // The structure used to hold the data for the optimisation
 struct optimData {
     Poly objective;
     Eigen::SparseMatrix<double> A;
+    Eigen::LeastSquaresConjugateGradient<Eigen::SparseMatrix<double>>* linSolver;
     Eigen::VectorXd b;
     std::vector<std::vector<Poly>> momentMatrix;
     std::vector<Mon> varList;
@@ -66,42 +143,44 @@ static double gradFunction(const Eigen::VectorXd& x, Eigen::VectorXd* gradOut, v
     // Objective value
     double obj = -optDataRecast->objective.eval(xMap).real();
 
-    // SDP projection
+    // Calculate linear error
+    double errorLin = (optDataRecast->A*x - optDataRecast->b).norm();
+
+    // Calculate the eigenspectrum
     Eigen::MatrixXd X = replaceVariables(optDataRecast->momentMatrix, xMap).real();
     Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es(X);
     Eigen::VectorXd eigVals = es.eigenvalues().real();
     Eigen::MatrixXd eigVecs = es.eigenvectors().real();
     double minEig = eigVals.minCoeff();
-    Eigen::MatrixXd diagEigVals = Eigen::MatrixXd::Zero(X.rows(), X.cols());
-    for (int i=0; i<eigVals.size(); i++) {
-        diagEigVals(i, i) = std::max(eigVals(i), 0.0);
-    }
-    Eigen::MatrixXd proj = eigVecs * diagEigVals * eigVecs.transpose();
-    for (int i=0; i<proj.rows(); i++) {
-        for (int j=i; j<proj.cols(); j++) {
-            xMap[optDataRecast->momentMatrix[i][j].getKey()] = proj(i, j);
-        }
-    }
-
-    // Convert back to a vector
-    Eigen::VectorXd xPos = Eigen::VectorXd::Zero(x.size());
-    for (int i=0; i<xMap.size(); i++) {
-        xPos(i) = xMap[optDataRecast->varList[i]].real();
-    }
-    Eigen::VectorXd errVec = optDataRecast->A*xPos - optDataRecast->b;
-    double errorLin = errVec.norm();
-
-    // Linear projection
-    Eigen::LeastSquaresConjugateGradient<Eigen::SparseMatrix<double>> linSolver;
-    linSolver.compute(optDataRecast->A);
-    linSolver.setTolerance(1e-10);
-    Eigen::VectorXd projX = linSolver.solveWithGuess(optDataRecast->b, xPos);
 
     // The cost function to minimize
-    double cost = errorLin + std::pow(minEig, 2);
+    double cost = errorLin*errorLin + minEig*minEig;
 
     // Calculate the gradient
     if (gradOut) {
+
+        // SDP projection
+        Eigen::MatrixXd diagEigVals = Eigen::MatrixXd::Zero(X.rows(), X.cols());
+        for (int i=0; i<eigVals.size(); i++) {
+            diagEigVals(i, i) = std::max(eigVals(i), 0.0);
+        }
+        Eigen::MatrixXd proj = eigVecs * diagEigVals * eigVecs.transpose();
+        for (int i=0; i<proj.rows(); i++) {
+            for (int j=i; j<proj.cols(); j++) {
+                xMap[optDataRecast->momentMatrix[i][j].getKey()] = proj(i, j);
+            }
+        }
+
+        // Convert back to a vector
+        Eigen::VectorXd xPos = Eigen::VectorXd::Zero(x.size());
+        for (int i=0; i<xMap.size(); i++) {
+            xPos(i) = xMap[optDataRecast->varList[i]].real();
+        }
+        Eigen::VectorXd errVec = optDataRecast->A*xPos - optDataRecast->b;
+        double errorLin = errVec.norm();
+
+        // Linear projection
+        Eigen::VectorXd projX = optDataRecast->linSolver->solveWithGuess(optDataRecast->b, xPos);
 
         // Reset the gradient
         *gradOut = Eigen::VectorXd::Zero(x.size());
@@ -111,13 +190,83 @@ static double gradFunction(const Eigen::VectorXd& x, Eigen::VectorXd* gradOut, v
             (*gradOut)(i) = x(i) - projX(i);
         }
 
-        // Per iteration output TODO
-        std::cout << obj << " " << cost << " " << errorLin << " " << minEig << "               \r" << std::flush;
+        // Early convergence
+        if (errorLin < 1e-7 && minEig > -1e-7) {
+            *gradOut = Eigen::VectorXd::Zero(x.size());
+        }
+
+        // Per iteration output
+        std::cout << "obj=" << obj << "  cost=" << cost << "  lin=" << errorLin << "  eig=" << minEig << "               \r" << std::flush;
 
     }
 
     // Return the cost
     return cost;
+
+}
+
+// Cost/gradient function for optim
+static double gradFunctionOuter(const Eigen::VectorXd& x, Eigen::VectorXd* gradOut, void* optData) {
+    
+    // Recast this generic pointer into the correct format
+    optimData* optDataRecast = reinterpret_cast<optimData*>(optData);
+
+    // Convert the x vector into a map
+    std::map<Mon, std::complex<double>> xMap;
+    for (int i=0; i<x.size(); i++) {
+        xMap[optDataRecast->varList[i]] = x(i);
+    }
+
+    // Objective value
+    double obj = -optDataRecast->objective.eval(xMap).real();
+        std::cout << "here" << std::endl;
+
+    // Calculate the gradient
+    if (gradOut) {
+
+        // Move in a distance
+        double distance = 0.1;
+        for (auto& term : optDataRecast->objective) {
+            if (std::abs(term.second) > 0) {
+                xMap[term.first] += distance;
+            } else {
+                xMap[term.first] -= distance;
+            }
+        }
+        Eigen::VectorXd startX = Eigen::VectorXd::Zero(x.size());
+        for (int i=0; i<startX.size(); i++) {
+            startX(i) = xMap[optDataRecast->varList[i]].real();
+        }
+        Eigen::VectorXd projX = optDataRecast->linSolver->solveWithGuess(optDataRecast->b, startX);
+        std::cout << "here" << std::endl;
+
+        // Optimize
+        optim::algo_settings_t settings;
+        settings.print_level = 0;
+        settings.iter_max = 5;
+        settings.rel_objfn_change_tol = 1e-4;
+        settings.lbfgs_settings.par_M = 6;
+        settings.lbfgs_settings.wolfe_cons_1 = 1e-3;
+        settings.lbfgs_settings.wolfe_cons_2 = 0.9;
+        bool success = optim::lbfgs(projX, gradFunction, &optData, settings);
+        std::cout << std::endl;
+
+        std::cout << "here" << std::endl;
+        // Reset the gradient
+        *gradOut = Eigen::VectorXd::Zero(x.size());
+
+        // Set the gradient
+        for (int i=0; i<gradOut->size(); i++) {
+            (*gradOut)(i) = x(i) - projX(i);
+        }
+
+        // Per iteration output
+        std::cout << "obj=" << obj << "               \r" << std::flush;
+
+    }
+
+    // Return the cost
+    return obj;
 
 }
 // Generic entry function
@@ -182,17 +331,25 @@ int main(int argc, char* argv[]) {
             }
             problemName = "R3322";
 
-        // Randomized version for arbitrary number of inputs TODO
+        // Randomized version for arbitrary number of inputs
         //
         // for -S 1 -RXX22 100
         // SCS 34s 1044
         // PRJ 28s 1068 2839i
+        // LBFGS 1s 1064
         // CEN  0s 1137
         //
         // for -S 1 -RXX22 200
         // SCS 61m 3009
         // PRJ  7m 3069 4507i
+        // LBFGS 3s 3064
         // CEN  0m 3274
+        //
+        // time ./run -S 1 --RXX22 100 -l 1 -D
+        // MOSEK 1m45s 1044 8GB
+        // SCS 57s 1044 38MB
+        // LBFGS 0.8s 1064 78MB
+        // CEN 0s 1137
         //
         } else if (argAsString == "--RXX22") {
             int numInputs = std::stoi(argv[i+1]);
@@ -888,10 +1045,10 @@ int main(int argc, char* argv[]) {
 
         // Set up the linear solver
         Eigen::LeastSquaresConjugateGradient<Eigen::SparseMatrix<double>> linSolver;
-        linSolver.setTolerance(tolerance/10.0);
+        linSolver.setTolerance(tolerance/100.0);
         linSolver.compute(A);
 
-        // Keep iterating until reaching limit or convergence TODO
+        // Keep iterating until reaching limit or convergence
         //double prevMinEig = -1;
         //double prevLinError = 1e-3;
         //Eigen::VectorXd x = Eigen::VectorXd::Zero(varList.size());
@@ -1025,28 +1182,88 @@ int main(int argc, char* argv[]) {
             x(i) = varVals[varList[i]].real();
         }
 
-        // Test With Optim TODO
+        // Linear projection
+        Eigen::VectorXd projX = linSolver.solveWithGuess(b, x);
+        x = projX;
+
+        // Test With Optim
         optimData optData;
         optData.objective = objective;
         optData.A = A;
+        optData.linSolver = &linSolver;
         optData.b = b;
         optData.momentMatrix = momentMatrices[0];
         optData.varList = varList;
         optim::algo_settings_t settings;
         settings.print_level = 0;
-        settings.iter_max = 10000;
-        settings.rel_objfn_change_tol = 1e-4;
-        settings.gd_settings.method = 2;
-        //bool success = optim::nm(x, gradFunction, &optData, settings);
-        //bool success = optim::gd(x, gradFunction, &optData, settings);
-        bool success = optim::lbfgs(x, gradFunction, &optData, settings);
+        settings.iter_max = maxIters;
+        settings.grad_err_tol = 1e-12;
+        settings.rel_sol_change_tol = 1e-12;
+        settings.rel_objfn_change_tol = 1e-12;
+        settings.lbfgs_settings.par_M = 10;
+        settings.lbfgs_settings.wolfe_cons_1 = 1e-3;
+        settings.lbfgs_settings.wolfe_cons_2 = 0.9;
+        LBFGSpp::LBFGSParam<double> param;
+        param.m = 6;
+        param.epsilon = 1e-12;
+        param.epsilon_rel = 1e-12;
+        param.max_iterations = maxIters;
+        Optimizer fun(objective, A, &linSolver, b, momentMatrices[0], varList);
+        LBFGSpp::LBFGSSolver<double> solver(param);
+        double fx;
+        int numIters;
+
+        // TODO test with new library
+        //bool success = optim::lbfgs(x, gradFunction, &optData, settings);
+        numIters = solver.minimize(fun, x, fx);
+        std::cout << std::endl;
+
         for (int i=0; i<varList.size(); i++) {
             varVals[varList[i]] = x(i);
+        }
+
+        // Travel a bit in the objective direction TODO
+        int numExtra = 10;
+        double prevObj = 10000000;
+        for (int extraIter=0; extraIter<numExtra; extraIter++) {
+            std::cout << std::endl;
+            for (auto& term : objective) {
+                if (std::abs(term.second) > 0) {
+                    varVals[term.first] += distance;
+                } else {
+                    varVals[term.first] -= distance;
+                }
+            }
+            for (int i=0; i<varList.size(); i++) {
+                x(i) = varVals[varList[i]].real();
+            }
+            Eigen::VectorXd projX = linSolver.solveWithGuess(b, x);
+            x = projX;
+            if (extraIter == numExtra-1) {
+                settings.iter_max = maxIters;
+            } else {
+                settings.iter_max = 4;
+            }
+            std::cout << "with distance " << distance << std::endl;
+            //bool success = optim::lbfgs(x, gradFunction, &optData, settings);
+            numIters = solver.minimize(fun, x, fx);
+            for (int i=0; i<varList.size(); i++) {
+                varVals[varList[i]] = x(i);
+            }
+            double newObj = -objective.eval(varVals).real();
+            if (newObj >= prevObj) {
+                distance *= 0.5;
+            }
+            prevObj = newObj;
         }
 
         // Verbose output of the final solution
         if (verbosity >= 1) {
             std::cout << std::endl;
+            if (settings.opt_iter < 10000) {
+                numIters = settings.opt_iter;
+            }
+            std::cout << "Iterations needed: " << numIters << std::endl;
             varVals[Mon()] = 1;
             std::cout << "Final objective: " << -objective.eval(varVals).real() << std::endl;
             Eigen::MatrixXcd X = replaceVariables(momentMatrices[0], varVals);

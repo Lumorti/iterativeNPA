@@ -4,9 +4,9 @@ CXXFLAGS=-fmax-errors=3 -O3 -march=native -fopenmp -pipe
 LIBSEIGEN= -I${EIGENHOME}
 LIBSMOSEK= -I${MSKHOME}/h -L${MSKHOME}/bin -Wl,-rpath-link,${MSKHOME}/bin -Wl,-rpath=${MSKHOME}/bin -lmosek64 -lfusion64
 LIBSOPTIM= -I${OPTIMHOME}/header_only_version/ 
-LIBSSPECTRA= -I${SPECTRAHOME}/include/
 LIBSSCS= -I${SCSHOME}/include/scs/ -L${SCSHOME}/lib/ -lscsdir
-LIBS=$(LIBSEIGEN) $(LIBSMOSEK) $(LIBSOPTIM) $(LIBSSCS) $(LIBSSPECTRA)
+LIBSLBFGS= -I./lbfgs/include
+LIBS=$(LIBSEIGEN) $(LIBSMOSEK) $(LIBSOPTIM) $(LIBSSCS)
 FILES=$(wildcard src/*.cpp)
 ASOBJ=$(FILES:.cpp=.o)
 
@@ -16,7 +16,7 @@ run: $(ASOBJ)
 	$(CXX) $(CXXFLAGS) -o run $(ASOBJ) $(LIBS)
 
 src/main.o: src/main.cpp
-	$(CXX) $(CXXFLAGS) -c src/main.cpp -o src/main.o $(LIBSEIGEN) $(LIBSOPTIM) $(LIBSSPECTRA)
+	$(CXX) $(CXXFLAGS) -c src/main.cpp -o src/main.o $(LIBSEIGEN) $(LIBSOPTIM) $(LIBSLBFGS)
 
 src/optMOSEK.o: src/optMOSEK.cpp src/optMOSEK.h
 	$(CXX) $(CXXFLAGS) -c src/optMOSEK.cpp -o src/optMOSEK.o $(LIBSMOSEK) $(LIBSEIGEN)
