@@ -351,7 +351,7 @@ int main(int argc, char* argv[]) {
         // LBFGS 0.8s 1064 78MB
         // CEN 0s 1137
         //
-        } else if (argAsString == "--RXX22") {
+        } else if (argAsString == "--RXX22" || argAsString == "--rxx22") {
             int numInputs = std::stoi(argv[i+1]);
             bellFunc = Poly();
             for (int i=1; i<=numInputs; i++) {
@@ -1215,12 +1215,11 @@ int main(int argc, char* argv[]) {
 
         // TODO test with new library
         //bool success = optim::lbfgs(x, gradFunction, &optData, settings);
-        numIters = solver.minimize(fun, x, fx);
-        std::cout << std::endl;
-
-        for (int i=0; i<varList.size(); i++) {
-            varVals[varList[i]] = x(i);
-        }
+        //numIters = solver.minimize(fun, x, fx);
+        //std::cout << std::endl;
+        //for (int i=0; i<varList.size(); i++) {
+            //varVals[varList[i]] = x(i);
+        //}
 
         // Travel a bit in the objective direction TODO
         int numExtra = 10;
@@ -1241,8 +1240,10 @@ int main(int argc, char* argv[]) {
             x = projX;
             if (extraIter == numExtra-1) {
                 settings.iter_max = maxIters;
+                param.max_iterations = maxIters;
             } else {
                 settings.iter_max = 4;
+                param.max_iterations = 4;
             }
             std::cout << "with distance " << distance << std::endl;
             //bool success = optim::lbfgs(x, gradFunction, &optData, settings);
