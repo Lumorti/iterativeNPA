@@ -433,7 +433,7 @@ int main(int argc, char* argv[]) {
         // LBFGS 0.8s 1064 78MB
         // CEN 0s 1137
         //
-        } else if (argAsString == "--RXX22") {
+        } else if (argAsString == "--RXX22" || argAsString == "--rxx22") {
             int numInputs = std::stoi(argv[i+1]);
             bellFunc = Poly();
             for (int i=1; i<=numInputs; i++) {
