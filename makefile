@@ -5,7 +5,6 @@ LIBSEIGEN= -I${EIGENHOME}
 LIBSMOSEK= -I${MSKHOME}/h -L${MSKHOME}/bin -Wl,-rpath-link,${MSKHOME}/bin -Wl,-rpath=${MSKHOME}/bin -lmosek64 -lfusion64
 LIBSOPTIM= -I${OPTIMHOME}/header_only_version/ 
 LIBSSCS= -I${SCSHOME}/include/scs/ -L${SCSHOME}/lib/ -lscsdir
-LIBSLBFGS= -I./lbfgs/include
 LIBS=$(LIBSEIGEN) $(LIBSMOSEK) $(LIBSOPTIM) $(LIBSSCS)
 FILES=$(wildcard src/*.cpp)
 ASOBJ=$(FILES:.cpp=.o)
