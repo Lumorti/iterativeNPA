@@ -1,4 +1,4 @@
-// Standard includes
+// Standard includesSCS
 #include <iostream>
 #include <vector>
 #include <chrono>
@@ -118,90 +118,7 @@ static double gradFunction(const Eigen::VectorXd& x, Eigen::VectorXd* gradOut, v
         }
 
         // Per iteration output
-        std::cout << "obj=" << obj << "  lin=" << errorLin << "  eig=" << minEig << "       \r" << std::flush;
-
-    }
-
-    // Return the cost
-    return cost;
-
-}
-
-// Cost/gradient function for optim TODO
-static double gradFunctionFlipped(const Eigen::VectorXd& x, Eigen::VectorXd* gradOut, void* optData) {
-    
-    // Recast this generic pointer into the correct format
-    optimData* optDataRecast = reinterpret_cast<optimData*>(optData);
-
-    // Convert the x vector into a map
-    std::map<Mon, std::complex<double>> xMap;
-    for (int i=0; i<x.size(); i++) {
-        xMap[optDataRecast->varList[i]] = x(i);
-    }
-
-    // Objective value
-    double obj = -optDataRecast->objective.eval(xMap).real();
-
-    // Calculate linear error
-    double errorLin = (optDataRecast->A*x - optDataRecast->b).norm();
-
-    // Calculate the eigenspectrum
-    Eigen::MatrixXd X = replaceVariables(optDataRecast->momentMatrix, xMap).real();
-    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es(X);
-    Eigen::VectorXd eigVals = es.eigenvalues().real();
-    double minEig = eigVals.minCoeff();
-
-    // The cost function to minimize
-    double cost = errorLin*errorLin + minEig*minEig;
-
-    // Calculate the gradient
-    if (gradOut) {
-
-        // Linear projection
-        Eigen::VectorXd projX = optDataRecast->linSolver->solveWithGuess(optDataRecast->b, x);
-
-        // Convert back to a map
-        for (int i=0; i<x.size(); i++) {
-            xMap[optDataRecast->varList[i]] = projX(i);
-        }
-
-        // SDP projection
-        X = replaceVariables(optDataRecast->momentMatrix, xMap).real();
-        es.compute(X);
-        eigVals = es.eigenvalues().real();
-        Eigen::MatrixXd eigVecs = es.eigenvectors().real();
-        Eigen::MatrixXd diagEigVals = Eigen::MatrixXd::Zero(X.rows(), X.cols());
-        for (int i=0; i<eigVals.size(); i++) {
-            diagEigVals(i, i) = std::max(eigVals(i), 0.0);
-        }
-        Eigen::MatrixXd proj = eigVecs * diagEigVals * eigVecs.transpose();
-        for (int i=0; i<proj.rows(); i++) {
-            for (int j=i; j<proj.cols(); j++) {
-                xMap[optDataRecast->momentMatrix[i][j].getKey()] = proj(i, j);
-            }
-        }
-
-        // Convert back to a vector
-        Eigen::VectorXd xPos = Eigen::VectorXd::Zero(x.size());
-        for (int i=0; i<xMap.size(); i++) {
-            xPos(i) = xMap[optDataRecast->varList[i]].real();
-        }
-
-        // Reset the gradient
-        *gradOut = Eigen::VectorXd::Zero(x.size());
-
-        // Set the gradient
-        for (int i=0; i<gradOut->size(); i++) {
-            (*gradOut)(i) = x(i) - xPos(i);
-        }
-
-        // Early convergence
-        if (errorLin < 1e-7 && minEig > -1e-7) { 
-            *gradOut = Eigen::VectorXd::Zero(x.size());
-        }
-
-        // Per iteration output
-        std::cout << "obj=" << obj << "  lin=" << errorLin << "  eig=" << minEig << "       \r" << std::flush;
+        //std::cout << "obj=" << obj << "  lin=" << errorLin << "  eig=" << minEig << "       \r" << std::flush;
 
     }
 
@@ -230,6 +147,7 @@ int main(int argc, char* argv[]) {
     bool use01 = false;
     double stepSize = 100;
     double tolerance = 1e-6;
+    int numExtra = 0;
     std::string solver = "MOSEK";
     std::string seed = "";
     std::string problemName = "CHSH";
@@ -248,9 +166,15 @@ int main(int argc, char* argv[]) {
         } else if (argAsString == "-01") {
             use01 = true;
 
-        // If told to use SCS
-        } else if (argAsString == "-C") {
-            solver = "SCS";
+        // If told to use a specific solver
+        } else if (argAsString == "-s") {
+            if (std::string(argv[i+1]) == "s") {
+                solver = "SCS";
+            } else if (std::string(argv[i+1]) == "m") {
+                solver = "MOSEK";
+            } else if (std::string(argv[i+1]) == "l") {
+                solver = "LBFGS";
+            }
 
         // I3322
         // l1 (7x7) = 5.5
@@ -354,6 +278,11 @@ int main(int argc, char* argv[]) {
             Eigen::setNbThreads(numCores);
             i++;
 
+        // If setting num extra
+        } else if (argAsString == "-E") {
+            numExtra = std::stoi(argv[i+1]);
+            i++;
+
         // Output the help
         } else if (argAsString == "-h" || argAsString == "--help") {
             std::cout << "Usage: " << argv[0] << " [options]" << std::endl;
@@ -372,9 +301,11 @@ int main(int argc, char* argv[]) {
             std::cout << "  -T <dbl>        Set the tolerance" << std::endl;
             std::cout << "  -t <int>        Testing some new idea" << std::endl;
             std::cout << "  -e <str>        Add an extra moment to the top row" << std::endl;
+            std::cout << "  -E <int>        Number of extra iterations to do" << std::endl;
             std::cout << "  -h              Display this help message" << std::endl;
             std::cout << "  -D              Use the dual of the problem" << std::endl;
-            std::cout << "  -C              Use SCS to solve rather than MOSEK" << std::endl;
+            std::cout << "  -s S            Use SCS as the solver" << std::endl;
+            std::cout << "  -s M            Use MOSEK as the solver" << std::endl;
             std::cout << "  -A <dbl>        Set the step size" << std::endl;
             std::cout << "  -01             Use 0/1 output instead of -1/1" << std::endl;
             return 0;
@@ -996,6 +927,7 @@ int main(int argc, char* argv[]) {
         // Set up the linear solver
         Eigen::LeastSquaresConjugateGradient<Eigen::SparseMatrix<double>> linSolver;
         linSolver.setTolerance(tolerance/100.0);
+        //linSolver.setTolerance(1e-4);
         linSolver.compute(A);
 
         // Convert to a vector
@@ -1003,6 +935,7 @@ int main(int argc, char* argv[]) {
         for (int i=0; i<varList.size(); i++) {
             x(i) = varVals[varList[i]].real();
         }
+        Eigen::VectorXd xOg = x;
 
         // Test With Optim
         optimData optData;
@@ -1019,140 +952,134 @@ int main(int argc, char* argv[]) {
         settings.rel_sol_change_tol = 1e-12;
         settings.rel_objfn_change_tol = 1e-12;
         settings.lbfgs_settings.par_M = 6;
-        settings.lbfgs_settings.wolfe_cons_1 = 1e-4;
+        settings.lbfgs_settings.wolfe_cons_1 = 1e-3;
         settings.lbfgs_settings.wolfe_cons_2 = 0.9;
         settings.gd_settings.method = 0;
 
-        double objPrev = 10000000;
-        for (int k=0; k<varList.size(); k++) {
+        // Solve
+        Eigen::VectorXd projX = linSolver.solveWithGuess(b, x);
+        bool success = optim::lbfgs(projX, gradFunction, &optData, settings);
+        std::cout << std::endl;
+        for (int i=0; i<varList.size(); i++) {
+            varVals[varList[i]] = projX(i);
+        }
+        x = projX;
 
-            std::map<Mon, std::complex<double>> varValsToTest;
+        //double objPrev = 10000000;
+        //for (int k=0; k<varList.size(); k++) {
 
-            // Set this variable to plus distance
-            x(k) = distance;
-            Eigen::VectorXd xLin1 = linSolver.solveWithGuess(b, x);
-            std::cout << "testing " << varList[k] << " = " << distance << std::endl;
-            bool successLin1 = optim::lbfgs(xLin1, gradFunction, &optData, settings);
-            std::cout << std::endl;
-            for (int i=0; i<varList.size(); i++) {
-                varValsToTest[varList[i]] = xLin1(i);
-            }
-            double obj1 = -objective.eval(varValsToTest).real();
+            //std::map<Mon, std::complex<double>> varValsToTest;
 
-            // Set this variable to minus distance
-            x(k) = -distance;
-            Eigen::VectorXd xLin2 = linSolver.solveWithGuess(b, x);
-            std::cout << "testing " << varList[k] << " = " << -distance << std::endl;
-            bool successLin2 = optim::lbfgs(xLin2, gradFunction, &optData, settings);
-            std::cout << std::endl;
-            for (int i=0; i<varList.size(); i++) {
-                varValsToTest[varList[i]] = xLin2(i);
-            }
-            double obj2 = -objective.eval(varValsToTest).real();
+            //// Set this variable to plus distance
+            //x(k) = distance;
+            //Eigen::VectorXd xLin1 = linSolver.solveWithGuess(b, x);
+            //std::cout << "testing " << varList[k] << " = " << distance << std::endl;
+            //bool successLin1 = optim::lbfgs(xLin1, gradFunction, &optData, settings);
+            //std::cout << std::endl;
+            //for (int i=0; i<varList.size(); i++) {
+                //varValsToTest[varList[i]] = xLin1(i);
+            //}
+            //double obj1 = -objective.eval(varValsToTest).real();
 
-            // Set this variable back to zero
-            x(k) = 0;
-            Eigen::VectorXd xLin3 = linSolver.solveWithGuess(b, x);
-            std::cout << "testing " << varList[k] << " = 0" << std::endl;
-            bool successLin3 = optim::lbfgs(xLin3, gradFunction, &optData, settings);
-            std::cout << std::endl;
-            for (int i=0; i<varList.size(); i++) {
-                varValsToTest[varList[i]] = xLin3(i);
-            }
-            double obj3 = -objective.eval(varValsToTest).real();
+            //// Set this variable to minus distance
+            //x(k) = -distance;
+            //Eigen::VectorXd xLin2 = linSolver.solveWithGuess(b, x);
+            //std::cout << "testing " << varList[k] << " = " << -distance << std::endl;
+            //bool successLin2 = optim::lbfgs(xLin2, gradFunction, &optData, settings);
+            //std::cout << std::endl;
+            //for (int i=0; i<varList.size(); i++) {
+                //varValsToTest[varList[i]] = xLin2(i);
+            //}
+            //double obj2 = -objective.eval(varValsToTest).real();
 
-            double objMin = std::min(obj1, std::min(obj2, obj3));
-            if (objMin == obj1) {
-                x(k) = distance;
-            } else if (objMin == obj2) {
-                x(k) = -distance;
+            //// Set this variable back to zero
+            //x(k) = 0;
+            //Eigen::VectorXd xLin3 = linSolver.solveWithGuess(b, x);
+            //std::cout << "testing " << varList[k] << " = 0" << std::endl;
+            //bool successLin3 = optim::lbfgs(xLin3, gradFunction, &optData, settings);
+            //std::cout << std::endl;
+            //for (int i=0; i<varList.size(); i++) {
+                //varValsToTest[varList[i]] = xLin3(i);
+            //}
+            //double obj3 = -objective.eval(varValsToTest).real();
+
+            //double objMin = std::min(obj1, std::min(obj2, obj3));
+            //if (objMin == obj1) {
+                //x(k) = distance;
+            //} else if (objMin == obj2) {
+                //x(k) = -distance;
+            //} else {
+                //x(k) = 0;
+            //}
+
+        //}
+
+        // Travel a bit in the objective direction TODO
+        double prevObj = 10000000;
+        distance = 1;
+        for (int extraIter=0; extraIter<numExtra; extraIter++) {
+
+            //std::cout << "x before update: " << std::endl;
+            //for (int i=0; i<varList.size(); i++) {
+                //std::cout << varList[i] << " -> " << x(i) << std::endl;
+            //}
+
+            // Move a bit in the direction
+            Eigen::VectorXd delta = xOg - x;
+            delta.normalize();
+            x += delta*distance;
+
+            //std::cout << "x after update: " << std::endl;
+            //for (int i=0; i<varList.size(); i++) {
+                //std::cout << varList[i] << " -> " << x(i) << std::endl;
+            //}
+
+            // The last iteration should be longer
+            if (extraIter == numExtra-1) {
+                settings.iter_max = 1000000;
             } else {
-                x(k) = 0;
+                settings.iter_max = maxIters;
+            }
+
+            // Solve
+            Eigen::VectorXd projX = linSolver.solveWithGuess(b, x);
+            //std::cout << "x after linear projection: " << std::endl;
+            //for (int i=0; i<varList.size(); i++) {
+                //std::cout << varList[i] << " -> " << x(i) << std::endl;
+            //}
+            bool success = optim::lbfgs(projX, gradFunction, &optData, settings);
+            //std::cout << std::endl;
+            //std::cout << "x after optimisation: " << std::endl;
+            //for (int i=0; i<varList.size(); i++) {
+                //std::cout << varList[i] << " -> " << projX(i) << std::endl;
+            //}
+            std::map<Mon, std::complex<double>> varValsNew;
+            for (int i=0; i<varList.size(); i++) {
+                varValsNew[varList[i]] = projX(i);
+            }
+
+            // Calculate the objective
+            double newObj = -objective.eval(varValsNew).real();
+            std::cout << "iter=" << extraIter << "  dis=" << distance << "  obj=" << newObj << std::endl;
+
+            // Adjust the distance
+            double objDiff = std::abs(newObj - prevObj);
+            if (newObj >= prevObj) {
+                distance *= 0.5;
+            }
+            x = projX;
+            prevObj = newObj;
+
+            if (distance < 1e-8) {
+                break;
             }
 
         }
 
-        // Travel a bit in the objective direction TODO
-        //int numExtra = 1000;
-        //double prevObj = 10000000;
-        //for (int extraIter=0; extraIter<numExtra; extraIter++) {
-
-            //double distanceToTry = distance;
-            //double bestObj = prevObj;
-            //double bestDist = distanceToTry;
-            //std::map<Mon, std::complex<double>> bestVarVals;
-            //for (int j=0; j<10; j++) {
-
-                //// Move a bit in the direction
-                //std::map<Mon, std::complex<double>> varValsNew = varVals;
-                //for (auto& term : objective) {
-                    //if (std::abs(term.second) > 0) {
-                        //varValsNew[term.first] += distanceToTry;
-                    //} else {
-                        //varValsNew[term.first] -= distanceToTry;
-                    //}
-                //}
-                //Eigen::VectorXd xNew = Eigen::VectorXd::Zero(varList.size());
-                //for (int i=0; i<varList.size(); i++) {
-                    //xNew(i) = varValsNew[varList[i]].real();
-                //}
-
-                //// The last iteration should be longer
-                //if (extraIter == numExtra-1) {
-                    //settings.iter_max = 1000000;
-                //} else {
-                    //settings.iter_max = maxIters;
-                //}
-
-                //// Solve
-                //Eigen::VectorXd projX = linSolver.solveWithGuess(b, xNew);
-                //bool success = optim::lbfgs(projX, gradFunction, &optData, settings);
-                //for (int i=0; i<varList.size(); i++) {
-                    //varValsNew[varList[i]] = projX(i);
-                //}
-
-                //// Calculate the objective
-                //double newObj = -objective.eval(varValsNew).real();
-                //std::cout << "distance=" << distanceToTry << " obj=" << newObj << "  best=" << bestObj << std::endl;
-
-                //// See if this is the best so far
-                //if (newObj < bestObj) {
-                    //bestObj = newObj;
-                    //bestVarVals = varValsNew;
-                    //bestDist = 2*distanceToTry;
-                    //if (j != 0) {
-                        //break;
-                    //}
-                //}
-
-                //// Reduce the distance and try again
-                //distanceToTry *= 0.5;
-                //if (distanceToTry < 1e-6) {
-                    //break;
-                //}
-
-            //}
-            //std::cout << std::endl;
-
-            ////if (std::abs(bestObj - prevObj) < 1e-4) {
-                ////break;
-            ////}
-
-            //if (distanceToTry > 1e-6) {
-                //varVals = bestVarVals;
-                //prevObj = bestObj;
-                //distance = bestDist;
-            //} else {
-                //break;
-            //}
-
-            //// Adjust the distance
-            ////if (newObj >= prevObj || std::abs(newObj - prevObj) < 1e-4) {
-                ////distance *= 0.5;
-            ////}
-            ////prevObj = newObj;
-
-        //}
+        // Update the varVals
+        for (int i=0; i<varList.size(); i++) {
+            varVals[varList[i]] = x(i);
+        }
 
         // Verbose output of the final solution
         if (verbosity >= 1) {
