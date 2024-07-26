@@ -21,6 +21,7 @@ struct optimData {
     double tol;
     int maxIters;
     Eigen::VectorXd xOg;
+    bool perIterOutput;
 };
 
 // Cost/gradient function for optim
@@ -91,59 +92,14 @@ static double gradFunction(const Eigen::VectorXd& x, Eigen::VectorXd* gradOut, v
         }
 
         // Per iteration output
-        //std::cout << "obj=" << obj << "  lin=" << errorLin << "  eig=" << minEig << "       \r" << std::flush;
+        if (optDataRecast->perIterOutput) {
+            std::cout << "obj=" << obj << "  lin=" << errorLin << "  eig=" << minEig << "       \r" << std::flush;
+        }
 
     }
 
     // Return the cost
     return cost;
-
-}
-
-// Cost/gradient function for optim TODO
-static double gradFunctionOuter(const Eigen::VectorXd& x, Eigen::VectorXd* gradOut, void* optData) {
-
-    // Recast this generic pointer into the correct format
-    optimData* optDataRecast = reinterpret_cast<optimData*>(optData);
-
-    // Move x in a direction
-    double distance = 0.01;
-    Eigen::VectorXd delta = optDataRecast->xOg - x;
-    delta.normalize();
-    Eigen::VectorXd xCopy = x + delta*distance;
-        
-    // Linear projection
-    Eigen::VectorXd projX = optDataRecast->linSolver->solveWithGuess(optDataRecast->b, xCopy);
-
-    // The settings for the inner loop
-    optim::algo_settings_t settings;
-    settings.print_level = 0;
-    settings.iter_max = optDataRecast->maxIters;
-    settings.grad_err_tol = 1e-12;
-    settings.rel_sol_change_tol = 1e-12;
-    settings.rel_objfn_change_tol = 1e-12;
-    settings.lbfgs_settings.par_M = 6;
-    settings.lbfgs_settings.wolfe_cons_1 = 1e-3;
-    settings.lbfgs_settings.wolfe_cons_2 = 0.9;
-
-    // Run the inner loop
-    bool success = optim::lbfgs(projX, gradFunction, optData, settings);
-    std::map<Mon, std::complex<double>> xMap;
-    for (int i=0; i<x.size(); i++) {
-        xMap[optDataRecast->varList[i]] = projX(i);
-    }
-
-    // Objective value
-    double obj = -optDataRecast->objective.eval(xMap).real();
-    std::cout << obj << std::endl;
-
-    // Simple gradient if asked for
-    if (gradOut) {
-        *gradOut = x - projX;
-    }
-
-    // Return the cost
-    return obj;
 
 }
 
@@ -297,17 +253,9 @@ double solveOptim(Poly objective, std::vector<Poly> constraintsZero, std::vector
     settings.lbfgs_settings.wolfe_cons_2 = 0.9;
     settings.gd_settings.method = 6;
 
-    // Outer loop
-    //Eigen::VectorXd projX = linSolver.solveWithGuess(b, x);
-    //bool success = optim::gd(projX, gradFunctionOuter, &optData, settings);
-    //std::cout << std::endl;
-    //for (int i=0; i<varList.size(); i++) {
-        //varVals[varList[i]] = projX(i);
-    //}
-    //x = projX;
-
     // Solve
     Eigen::VectorXd projX = linSolver.solveWithGuess(b, x);
+    optData.perIterOutput = verbosity >= 1;
     bool success = optim::lbfgs(projX, gradFunction, &optData, settings);
     std::cout << std::endl;
     for (int i=0; i<varList.size(); i++) {
@@ -319,12 +267,15 @@ double solveOptim(Poly objective, std::vector<Poly> constraintsZero, std::vector
     double prevObj = 10000000;
     distance = x.size();
     std::vector<Eigen::VectorXd> xList;
+    optData.perIterOutput = 0;
     for (int extraIter=0; extraIter<numExtra; extraIter++) {
 
         // Move a bit in the direction
         Eigen::VectorXd delta = xOg - x;
         delta.normalize();
         x += delta*distance;
+
+        // Do something based on the previous x TODO
 
         // The last iteration should be longer
         if (extraIter == numExtra-1) {
@@ -351,7 +302,7 @@ double solveOptim(Poly objective, std::vector<Poly> constraintsZero, std::vector
         // Adjust the distance
         double objDiff = std::abs(newObj - prevObj);
         if (newObj >= prevObj || extraIter % 1 == 0) {
-            distance *= 0.8;
+            distance *= 0.95;
         }
         x = projX;
         prevObj = newObj;
@@ -360,24 +311,6 @@ double solveOptim(Poly objective, std::vector<Poly> constraintsZero, std::vector
         if (distance < tolerance / 10.0) {
             break;
         }
-
-        // Once we have three, use Aitken's delta squared process TODO
-        //xList.push_back(x);
-        //if (xList.size() == 3) {
-            //Eigen::VectorXd x0 = xList[0];
-            //Eigen::VectorXd x1 = xList[1];
-            //Eigen::VectorXd x2 = xList[2];
-            //Eigen::VectorXd x2m1 = x2 - x1;
-            //Eigen::VectorXd x1m0 = x1 - x0;
-            //Eigen::VectorXd numer = x2m1.cwiseProduct(x2m1);
-            //Eigen::VectorXd denom = x2m1 - x1m0;
-            //for (int i=0; i<x.size(); i++) {
-                //if (std::abs(denom(i)) > 1e-8) {
-                    //x(i) = x2(i) - numer(i) / denom(i);
-                //}
-            //}
-            //xList.clear();
-        //}
 
     }
 
