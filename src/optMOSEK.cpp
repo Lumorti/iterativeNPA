@@ -226,7 +226,7 @@ double solveMOSEK(Poly obj, std::vector<std::vector<std::vector<Poly>>>& psd, st
 
     // Create a model
     mosek::fusion::Model::t M = new mosek::fusion::Model(); auto _M = monty::finally([&]() {M->dispose();});
-    if (verbosity >= 3) {
+    if (verbosity >= 2) {
         M->setLogHandler([=](const std::string & msg) {std::cout << msg << std::flush;});
     }
 
