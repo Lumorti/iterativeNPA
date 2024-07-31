@@ -53,7 +53,7 @@ int main(int argc, char* argv[]) {
     int numCores = 1;
     bool use01 = false;
     double stepSize = 100;
-    double tolerance = 1e-6;
+    double tolerance = 1e-8;
     int numExtra = 0;
     std::string solver = "MOSEK";
     std::string seed = "";
@@ -321,7 +321,41 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    // Convert to MOSEK form and solve
+    // Do level 1, then 2, then 3 TODO
+    if (testing == 2) {
+
+        std::map<Mon, std::complex<double>> startVals;
+        double res = 0;
+
+        // Level 1
+        momentMatrices = generateAllMomentMatrices(bellFunc, {}, 1, verbosity);
+        objective = bellFunc;
+        constraintsZero = {};
+        constraintsPositive = {};
+        primalToDual(objective, momentMatrices, constraintsZero, constraintsPositive);
+        res = solveOptim(objective, constraintsZero, momentMatrices, startVals, verbosity, maxIters, numExtra, stepSize, tolerance);
+
+        // Level 2
+        momentMatrices = generateAllMomentMatrices(bellFunc, {}, 2, verbosity);
+        objective = bellFunc;
+        constraintsZero = {};
+        constraintsPositive = {};
+        primalToDual(objective, momentMatrices, constraintsZero, constraintsPositive);
+        res = solveOptim(objective, constraintsZero, momentMatrices, startVals, verbosity, maxIters, numExtra, stepSize, tolerance);
+
+        // Level 3
+        momentMatrices = generateAllMomentMatrices(bellFunc, {}, 3, verbosity);
+        objective = bellFunc;
+        constraintsZero = {};
+        constraintsPositive = {};
+        primalToDual(objective, momentMatrices, constraintsZero, constraintsPositive);
+        res = solveOptim(objective, constraintsZero, momentMatrices, startVals, verbosity, maxIters, numExtra, stepSize, tolerance);
+
+        return 0;
+
+    }
+
+    // Solve the problem
     std::pair<int,int> varBounds = {-1, 1};
     if (useDual) {
         varBounds = {-100000, 100000};
@@ -335,7 +369,8 @@ int main(int argc, char* argv[]) {
         res = solveSCS(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, varBounds);
     } else if (solver == "Optim") {
         std::cout << "Solving with Optim..." << std::endl;
-        res = solveOptim(objective, constraintsZero, momentMatrices, verbosity, maxIters, numExtra, stepSize, tolerance);
+        std::map<Mon, std::complex<double>> startVals;
+        res = solveOptim(objective, constraintsZero, momentMatrices, startVals, verbosity, maxIters, numExtra, stepSize, tolerance);
     }
     if (useDual) {
         res = -res;
@@ -354,13 +389,13 @@ int main(int argc, char* argv[]) {
     if (verbosity >= 1) {
         int timeToGen = std::chrono::duration_cast<std::chrono::seconds>(timeFinishedGenerating - timeStart).count();
         int timeToSolve = std::chrono::duration_cast<std::chrono::seconds>(timeFinishedSolving - timeFinishedGenerating).count();
-        if (timeToGen == 0) {
+        if (timeToGen <= 1) {
             timeToGen = std::chrono::duration_cast<std::chrono::milliseconds>(timeFinishedGenerating - timeStart).count();
             std::cout << "Time to generate: " << timeToGen << "ms" << std::endl;
         } else {
             std::cout << "Time to generate: " << timeToGen << "s" << std::endl;
         }
-        if (timeToSolve == 0) {
+        if (timeToSolve <= 1) {
             timeToSolve = std::chrono::duration_cast<std::chrono::milliseconds>(timeFinishedSolving - timeFinishedGenerating).count();
             std::cout << "Time to solve: " << timeToSolve << "ms" << std::endl;
         } else {

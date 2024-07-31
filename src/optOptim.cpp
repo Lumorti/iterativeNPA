@@ -104,7 +104,7 @@ static double gradFunction(const Eigen::VectorXd& x, Eigen::VectorXd* gradOut, v
 }
 
 // Attempt to solve using Optim
-double solveOptim(Poly objective, std::vector<Poly> constraintsZero, std::vector<std::vector<std::vector<Poly>>> momentMatrices, int verbosity, int maxIters, int numExtra, double distance, double tolerance) {
+double solveOptim(Poly objective, std::vector<Poly> constraintsZero, std::vector<std::vector<std::vector<Poly>>> momentMatrices, std::map<Mon, std::complex<double>>& startVals, int verbosity, int maxIters, int numExtra, double distance, double tolerance) {
 
     // Starting output
     if (verbosity >= 1) {
@@ -181,15 +181,22 @@ double solveOptim(Poly objective, std::vector<Poly> constraintsZero, std::vector
         std::cout << "Starting distance: " << distance << std::endl;
     }
     std::map<Mon, std::complex<double>> varVals;
+    if (startVals.size() == 0) {
+        for (auto& mon : vars) {
+            varVals[mon] = 0;
+        }
+    } else {
+        for (auto& mon : vars) {
+            varVals[mon] = startVals[mon];
+        }
+    }
     for (auto& mon : vars) {
         if (objective.contains(mon)) {
             if (objective[mon].real() > 0) {
-                varVals[mon] = distance;
+                varVals[mon] += distance;
             } else {
-                varVals[mon] = -distance;
+                varVals[mon] -= distance;
             }
-        } else {
-            varVals[mon] = 0;
         }
     }
 
@@ -263,11 +270,14 @@ double solveOptim(Poly objective, std::vector<Poly> constraintsZero, std::vector
     }
     x = projX;
 
-    // Travel a bit in the objective direction TODO
+    // Travel a bit in the objective direction
     double prevObj = 10000000;
-    distance = x.size();
+    distance = x.size() / 10.0;
     std::vector<Eigen::VectorXd> xList;
     optData.perIterOutput = 0;
+    tolerance *= 1000;
+    double reductionFactor = std::pow(tolerance / (distance+1), 1.0/numExtra);
+    std::cout << "Reduction factor: " << reductionFactor << std::endl;
     for (int extraIter=0; extraIter<numExtra; extraIter++) {
 
         // Move a bit in the direction
@@ -299,18 +309,13 @@ double solveOptim(Poly objective, std::vector<Poly> constraintsZero, std::vector
         double newObj = -objective.eval(varValsNew).real();
         std::cout << "iter=" << extraIter << "  dis=" << distance << "  obj=" << newObj << "  timeLin=" << std::chrono::duration_cast<std::chrono::milliseconds>(timeFinishedLin - timeStartLin).count() << "ms  timeOpt=" << std::chrono::duration_cast<std::chrono::milliseconds>(timeFinishedOpt - timeFinishedLin).count() << "ms" << std::endl;
 
+        // Then reduce the distance
+        distance *= reductionFactor;
+
         // Adjust the distance
         double objDiff = std::abs(newObj - prevObj);
-        if (newObj >= prevObj || extraIter % 1 == 0) {
-            distance *= 0.95;
-        }
         x = projX;
         prevObj = newObj;
-
-        // Stopping condition
-        if (distance < tolerance / 10.0) {
-            break;
-        }
 
     }
 
@@ -357,6 +362,12 @@ double solveOptim(Poly objective, std::vector<Poly> constraintsZero, std::vector
         std::cout << "Final linear error: " << (A*x - b).norm() << std::endl;
     }
 
+    // Return the values
+    if (startVals.size() == 0) {
+        startVals = varVals;
+    }
+
+    // Return the objective
     return finalObjective;
 
 }
