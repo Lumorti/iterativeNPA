@@ -305,11 +305,15 @@ double solveMOSEK(Poly obj, std::vector<std::vector<std::vector<Poly>>>& psd, st
     for (size_t i=0; i<variables.size(); i++) {
         variableValues[i] = std::complex<double>(xMLevel[i], 0);
     }
+    std::map<Mon, std::complex<double>> vals;
+    for (size_t i=0; i<variables.size(); i++) {
+        vals[variables[i]] = variableValues[i];
+    }
 
-    // Check the eigenvalues of each moment matrix
-    if (verbosity >= 2) {
-        std::cout << std::endl;
-        std::cout << "Objective value: " << objPrimal << std::endl;
+    // Checks on the solution
+    if (verbosity >= 1) {
+
+        // Check the eigenvalues of each moment matrix
         for (size_t i=0; i<psd.size(); i++) {
             std::vector<std::vector<std::complex<double>>> eigenvectors;
             std::vector<std::complex<double>> eigenvalues;
@@ -323,8 +327,17 @@ double solveMOSEK(Poly obj, std::vector<std::vector<std::vector<Poly>>>& psd, st
                     minEig = std::real(eigenvalues[j]);
                 }
             }
-            std::cout << "Min eigenvalue: " << minEig << std::endl;
+            std::cout << "Final min eig: " << minEig << std::endl;
         }
+
+        // Check the linear error of the solution
+        double linearError = 0;
+        for (size_t i=0; i<constraintsZero.size(); i++) {
+            linearError += std::pow(std::abs(constraintsZero[i].eval(vals)), 2);
+        }
+        linearError = std::sqrt(linearError);
+        std::cout << "Final linear error: " << linearError << std::endl;
+
     }
 
     // If xMap is not a null pointer
@@ -408,10 +421,6 @@ double solveMOSEK(Poly obj, std::vector<std::vector<std::vector<Poly>>>& psd, st
         }
 
         // Eval all of the constraints
-        std::map<Mon, std::complex<double>> vals;
-        for (size_t i=0; i<variables.size(); i++) {
-            vals[variables[i]] = variableValues[i];
-        }
         for (size_t i=0; i<constraintsZero.size(); i++) {
             std::cout << "Constraint " << i << ": " << constraintsZero[i].eval(vals) << std::endl;
         }

@@ -294,15 +294,25 @@ double solveSCS(Poly obj, std::vector<std::vector<std::vector<Poly>>>& psd, std:
         solMap[variables[i]] = sol->x[i];
     }
 
-    // Check the PSD matrices
-    if (verbosity >= 3) {
+    // Checks on the solution
+    if (verbosity >= 1) {
+
+        // Check the positivity of the matrix
         for (size_t k=0; k<psd.size(); k++) {
             Eigen::MatrixXcd mat = replaceVariables(psd[k], solMap);
-            std::cout << mat << std::endl;
             Eigen::SelfAdjointEigenSolver<Eigen::MatrixXcd> es(mat);
             Eigen::VectorXd eigenvalues = es.eigenvalues();
-            std::cout << "Min eigenvalue: " << eigenvalues.minCoeff() << std::endl;
+            std::cout << "Final min eig: " << eigenvalues.minCoeff() << std::endl;
         }
+
+        // Check the linear error of the solution
+        double linearError = 0;
+        for (size_t i=0; i<constraintsZero.size(); i++) {
+            linearError += std::pow(std::abs(constraintsZero[i].eval(solMap)), 2);
+        }
+        linearError = std::sqrt(linearError);
+        std::cout << "Final linear error: " << linearError << std::endl;
+
     }
 
     // Free allocated memory 
