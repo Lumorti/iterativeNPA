@@ -104,7 +104,7 @@ static double gradFunction(const Eigen::VectorXd& x, Eigen::VectorXd* gradOut, v
 }
 
 // Attempt to solve using Optim
-double solveOptim(Poly objective, std::vector<Poly> constraintsZero, std::vector<std::vector<std::vector<Poly>>> momentMatrices, std::map<Mon, std::complex<double>>& startVals, int verbosity, int maxIters, int numExtra, double distance, double tolerance) {
+double solveOptim(Poly& objective, std::vector<Poly>& constraintsZero, std::vector<std::vector<std::vector<Poly>>>& momentMatrices, std::map<Mon, std::complex<double>>& startVals, int verbosity, int maxIters, int numExtra, double distance, double tolerance) {
 
     // Starting output
     if (verbosity >= 1) {

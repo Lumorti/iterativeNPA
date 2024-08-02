@@ -7,7 +7,7 @@
 #include "fusion.h"
 
 // Convert to MOSEK form and solve
-double solveMOSEK(Poly obj, std::vector<std::vector<std::vector<Poly>>>& psd, std::vector<Poly> constraintsZero, std::vector<Poly> constraintsPositive, int verbosity, std::pair<int,int> varBounds, std::map<Mon, std::complex<double>>* xMap) {
+double solveMOSEK(Poly obj, std::vector<std::vector<std::vector<Poly>>>& psd, std::vector<Poly>& constraintsZero, std::vector<Poly>& constraintsPositive, int verbosity, std::pair<int,int> varBounds, std::map<Mon, std::complex<double>>* xMap) {
 
     // Get the list of variables
     int oneIndex = 0;

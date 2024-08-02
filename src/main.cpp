@@ -385,17 +385,17 @@ int main(int argc, char* argv[]) {
     // Start a timer
     std::chrono::steady_clock::time_point timeFinishedSolving = std::chrono::steady_clock::now();
 
-    // Output timings
+    // Output timings TODO remove benchmarking
     if (verbosity >= 1) {
         int timeToGen = std::chrono::duration_cast<std::chrono::seconds>(timeFinishedGenerating - timeStart).count();
         int timeToSolve = std::chrono::duration_cast<std::chrono::seconds>(timeFinishedSolving - timeFinishedGenerating).count();
-        if (timeToGen <= 1) {
+        if (timeToGen <= 1 || true) {
             timeToGen = std::chrono::duration_cast<std::chrono::milliseconds>(timeFinishedGenerating - timeStart).count();
             std::cout << "Time to generate: " << timeToGen << "ms" << std::endl;
         } else {
             std::cout << "Time to generate: " << timeToGen << "s" << std::endl;
         }
-        if (timeToSolve <= 1) {
+        if (timeToSolve <= 1 || true) {
             timeToSolve = std::chrono::duration_cast<std::chrono::milliseconds>(timeFinishedSolving - timeFinishedGenerating).count();
             std::cout << "Time to solve: " << timeToSolve << "ms" << std::endl;
         } else {
