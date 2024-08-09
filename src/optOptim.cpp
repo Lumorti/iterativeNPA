@@ -46,16 +46,16 @@ static double gradFunction(const Eigen::VectorXd& x, Eigen::VectorXd* gradOut, v
     Eigen::MatrixXd X = replaceVariables(optDataRecast->momentMatrix, xMap).real();
     Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es(X);
     Eigen::VectorXd eigVals = es.eigenvalues().real();
-    Eigen::MatrixXd eigVecs = es.eigenvectors().real();
     double minEig = eigVals.minCoeff();
 
     // The cost function to minimize
-    double cost = errorLin*errorLin + minEig*minEig;
+    double cost = std::pow(errorLin,2) + std::pow(minEig,2);
 
     // Calculate the gradient
     if (gradOut) {
 
         // SDP projection
+        Eigen::MatrixXd eigVecs = es.eigenvectors().real();
         Eigen::MatrixXd diagEigVals = Eigen::MatrixXd::Zero(X.rows(), X.cols());
         for (int i=0; i<eigVals.size(); i++) {
             diagEigVals(i, i) = std::max(eigVals(i), 0.0);
@@ -72,8 +72,6 @@ static double gradFunction(const Eigen::VectorXd& x, Eigen::VectorXd* gradOut, v
         for (int i=0; i<xMap.size(); i++) {
             xPos(i) = xMap[optDataRecast->varList[i]].real();
         }
-        Eigen::VectorXd errVec = optDataRecast->A*xPos - optDataRecast->b;
-        double errorLin = errVec.norm();
 
         // Linear projection
         Eigen::VectorXd projX = optDataRecast->linSolver->solveWithGuess(optDataRecast->b, xPos);
@@ -91,9 +89,14 @@ static double gradFunction(const Eigen::VectorXd& x, Eigen::VectorXd* gradOut, v
             *gradOut = Eigen::VectorXd::Zero(x.size());
         }
 
+        // Output the objective of the x + grad
+        double newCost = gradFunction(x + *gradOut, nullptr, optData);
+        std::cout << "new cost: " << newCost << std::endl;
+
         // Per iteration output
         if (optDataRecast->perIterOutput) {
-            std::cout << "obj=" << obj << "  lin=" << errorLin << "  eig=" << minEig << "       \r" << std::flush;
+            //std::cout << "obj=" << obj << "  lin=" << errorLin << "  eig=" << minEig << "       \r" << std::flush;
+            std::cout << "obj=" << obj << "  lin=" << errorLin << "  eig=" << minEig << "       \n" << std::flush;
         }
 
     }
@@ -105,14 +108,6 @@ static double gradFunction(const Eigen::VectorXd& x, Eigen::VectorXd* gradOut, v
 
 // Attempt to solve using Optim
 double solveOptim(Poly& objective, std::vector<Poly>& constraintsZero, std::vector<std::vector<std::vector<Poly>>>& momentMatrices, std::map<Mon, std::complex<double>>& startVals, int verbosity, int maxIters, int numExtra, double distance, double tolerance) {
-
-    // Starting output
-    if (verbosity >= 1) {
-        std::cout << "Moment matrix has size " << momentMatrices[0].size() << std::endl;
-        int estimatedIters = int(22.4834 * momentMatrices[0].size() / 2.0 + 283.873);
-        std::cout << "Should require on the order of " << estimatedIters << " iterations" << std::endl;
-        std::cout << "Starting projection..." << std::endl;
-    }
 
     // Get an easy bound by setting vars to the identity * minimum eigen
     std::map<Mon, std::complex<double>> varVals0;
@@ -229,7 +224,6 @@ double solveOptim(Poly& objective, std::vector<Poly>& constraintsZero, std::vect
     // Set up the linear solver
     Eigen::LeastSquaresConjugateGradient<Eigen::SparseMatrix<double>> linSolver;
     linSolver.setTolerance(tolerance/100.0);
-    //linSolver.setTolerance(1e-4);
     linSolver.compute(A);
 
     // Convert to a vector
@@ -255,15 +249,17 @@ double solveOptim(Poly& objective, std::vector<Poly>& constraintsZero, std::vect
     settings.grad_err_tol = 1e-12;
     settings.rel_sol_change_tol = 1e-12;
     settings.rel_objfn_change_tol = 1e-12;
-    settings.lbfgs_settings.par_M = 6;
+    settings.lbfgs_settings.par_M = 10;
     settings.lbfgs_settings.wolfe_cons_1 = 1e-3;
     settings.lbfgs_settings.wolfe_cons_2 = 0.9;
-    settings.gd_settings.method = 6;
+    settings.gd_settings.method = 0;
 
     // Solve
     Eigen::VectorXd projX = linSolver.solveWithGuess(b, x);
     optData.perIterOutput = verbosity >= 1;
     bool success = optim::lbfgs(projX, gradFunction, &optData, settings);
+    //bool success2 = optim::gd(projX, gradFunction, &optData, settings);
+    //bool success3 = optim::lbfgs(projX, gradFunction, &optData, settings);
     std::cout << std::endl;
     for (int i=0; i<varList.size(); i++) {
         varVals[varList[i]] = projX(i);
@@ -277,7 +273,9 @@ double solveOptim(Poly& objective, std::vector<Poly>& constraintsZero, std::vect
     optData.perIterOutput = 0;
     tolerance *= 1000;
     double reductionFactor = std::pow(tolerance / (distance+1), 1.0/numExtra);
-    std::cout << "Reduction factor: " << reductionFactor << std::endl;
+    if (numExtra > 0 && verbosity >= 1) {
+        std::cout << "Reduction factor: " << reductionFactor << std::endl;
+    }
     for (int extraIter=0; extraIter<numExtra; extraIter++) {
 
         // Move a bit in the direction

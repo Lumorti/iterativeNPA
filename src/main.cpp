@@ -299,6 +299,25 @@ int main(int argc, char* argv[]) {
         std::cout << "Largest moment matrix has size " << largestMomentMatrix << std::endl;
     }
 
+    // Constrain that the objective be below a certain value TODO
+    if (testing == 3) {
+
+        Poly shouldBePos = Poly(5.01) + objective;
+        //std::cout << objective << std::endl;
+
+        //Poly shouldBePos = Poly("-0.1618-<D0>");
+
+        // Add a new column to the moment matrix
+        //momentMatrices[0].push_back(std::vector<Poly>(momentMatrices[0].size(), Poly()));
+        //for (int i=0; i<momentMatrices[0].size(); i++) {
+            //momentMatrices[0][i].push_back(Poly());
+        //}
+        //momentMatrices[0][momentMatrices[0].size()-1][momentMatrices[0].size()-1] = shouldBePos;
+
+        constraintsZero.push_back(shouldBePos);
+
+    }
+
     // Output the problem
     if (verbosity >= 2) {
         if (objective.size() > 0) {
@@ -362,13 +381,19 @@ int main(int argc, char* argv[]) {
     }
     double res = 0;
     if (solver == "MOSEK") {
-        std::cout << "Solving with MOSEK..." << std::endl;
+        if (verbosity >= 1) {
+            std::cout << "Solving with MOSEK..." << std::endl;
+        }
         res = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, varBounds);
     } else if (solver == "SCS") {
-        std::cout << "Solving with SCS..." << std::endl;
+        if (verbosity >= 1) {
+            std::cout << "Solving with SCS..." << std::endl;
+        }
         res = solveSCS(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, varBounds);
     } else if (solver == "Optim") {
-        std::cout << "Solving with Optim..." << std::endl;
+        if (verbosity >= 1) {
+            std::cout << "Solving with Optim..." << std::endl;
+        }
         std::map<Mon, std::complex<double>> startVals;
         res = solveOptim(objective, constraintsZero, momentMatrices, startVals, verbosity, maxIters, numExtra, stepSize, tolerance);
     }
@@ -385,22 +410,12 @@ int main(int argc, char* argv[]) {
     // Start a timer
     std::chrono::steady_clock::time_point timeFinishedSolving = std::chrono::steady_clock::now();
 
-    // Output timings TODO remove benchmarking
+    // Output timings
     if (verbosity >= 1) {
-        int timeToGen = std::chrono::duration_cast<std::chrono::seconds>(timeFinishedGenerating - timeStart).count();
-        int timeToSolve = std::chrono::duration_cast<std::chrono::seconds>(timeFinishedSolving - timeFinishedGenerating).count();
-        if (timeToGen <= 1 || true) {
-            timeToGen = std::chrono::duration_cast<std::chrono::milliseconds>(timeFinishedGenerating - timeStart).count();
-            std::cout << "Time to generate: " << timeToGen << "ms" << std::endl;
-        } else {
-            std::cout << "Time to generate: " << timeToGen << "s" << std::endl;
-        }
-        if (timeToSolve <= 1 || true) {
-            timeToSolve = std::chrono::duration_cast<std::chrono::milliseconds>(timeFinishedSolving - timeFinishedGenerating).count();
-            std::cout << "Time to solve: " << timeToSolve << "ms" << std::endl;
-        } else {
-            std::cout << "Time to solve: " << timeToSolve << "s" << std::endl;
-        }
+        int timeToGen = std::chrono::duration_cast<std::chrono::milliseconds>(timeFinishedGenerating - timeStart).count();
+        int timeToSolve = std::chrono::duration_cast<std::chrono::milliseconds>(timeFinishedSolving - timeFinishedGenerating).count();
+        std::cout << "Time to generate: " << timeToGen << "ms" << std::endl;
+        std::cout << "Time to solve: " << timeToSolve << "ms" << std::endl;
     }
 
     // Exit without errors
