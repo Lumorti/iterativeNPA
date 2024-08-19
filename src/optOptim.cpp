@@ -91,12 +91,10 @@ static double gradFunction(const Eigen::VectorXd& x, Eigen::VectorXd* gradOut, v
 
         // Output the objective of the x + grad
         double newCost = gradFunction(x + *gradOut, nullptr, optData);
-        std::cout << "new cost: " << newCost << std::endl;
 
         // Per iteration output
         if (optDataRecast->perIterOutput) {
-            //std::cout << "obj=" << obj << "  lin=" << errorLin << "  eig=" << minEig << "       \r" << std::flush;
-            std::cout << "obj=" << obj << "  lin=" << errorLin << "  eig=" << minEig << "       \n" << std::flush;
+            std::cout << "obj=" << obj << "  lin=" << errorLin << "  eig=" << minEig << "       \r" << std::flush;
         }
 
     }
@@ -138,7 +136,7 @@ double solveOptim(Poly& objective, std::vector<Poly>& constraintsZero, std::vect
     int newInd = 0;
     for (int i=0; i<newMomentMatrix.size(); i++) {
         for (int j=i; j<newMomentMatrix[i].size(); j++) {
-            newMomentMatrix[i][j] = Poly("<M" + std::to_string(newInd) + ">");
+            newMomentMatrix[i][j] = Poly("<z" + std::to_string(newInd) + ">");
             newMomentMatrix[j][i] = newMomentMatrix[i][j];
             constraintsZero.push_back(momentMatrices[0][i][j] - newMomentMatrix[i][j]);
             newInd++;

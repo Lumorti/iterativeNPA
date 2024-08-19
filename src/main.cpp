@@ -34,6 +34,20 @@ std::map<Mon, std::complex<double>> operator-(const std::map<Mon, std::complex<d
     return res;
 }
 
+// Convert an integer to a character
+std::string intToChar(int i) {
+    if (i < 26) {
+        return std::string(1, 'A' + i);
+    } else {
+        return std::string(1, 'a' + i - 26);
+    }
+}
+
+// Round to +1 or -1
+int roundTo1(double x) {
+    return x >= 0 ? 1 : -1;
+}
+
 // Generic entry function
 int main(int argc, char* argv[]) {
 
@@ -198,7 +212,8 @@ int main(int argc, char* argv[]) {
             std::cout << "  --chsh          Use the CHSH scenario" << std::endl;
             std::cout << "  --I3322         Use the I3322 scenario" << std::endl;
             std::cout << "  --R3322         Use the randomized I3322 scenario" << std::endl;
-            std::cout << "  --RXX22         Use the randomized scenario with arbitrary number of inputs" << std::endl;
+            std::cout << "  --RXX22 <int>   Use the randomized scenario with arbitrary number of inputs" << std::endl;
+            std::cout << "  --ising <int>   A randomized fully-connected Ising model" << std::endl;
             std::cout << "  -c <int>        Number of CPU threads to use" << std::endl;
             std::cout << "  -l <int>        Level of the moment matrix" << std::endl;
             std::cout << "  -i <int>        Iteration limit" << std::endl;
@@ -227,6 +242,26 @@ int main(int argc, char* argv[]) {
         // If using the dual
         } else if (argAsString == "-D") {
             useDual = true;
+
+        // If told to use the Ising model TODO
+        } else if (argAsString == "--ising") {
+            int numInputs = std::stoi(argv[i+1]);
+            problemName = "ISING";
+            if (numInputs > 50) {
+                std::cout << "Error - too big a model, can only have up to 50" << std::endl;
+                return 1;
+            }
+            bellFunc = Poly();
+            for (int i=0; i<numInputs; i++) {
+                bellFunc += Poly("<" + intToChar(i) + "1>");
+            }
+            for (int i=0; i<numInputs; i++) {
+                for (int j=i+1; j<numInputs; j++) {
+                    bellFunc += Poly("<" + intToChar(i) + "1" + intToChar(j) + "1>");
+                }
+            }
+            bellFunc.randomize();
+            i++;
 
         // Otherwise we don't know what this is
         } else {
@@ -380,11 +415,12 @@ int main(int argc, char* argv[]) {
         varBounds = {-100000, 100000};
     }
     double res = 0;
+    std::map<Mon, std::complex<double>> varVals;
     if (solver == "MOSEK") {
         if (verbosity >= 1) {
             std::cout << "Solving with MOSEK..." << std::endl;
         }
-        res = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, varBounds);
+        res = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, varBounds, &varVals);
     } else if (solver == "SCS") {
         if (verbosity >= 1) {
             std::cout << "Solving with SCS..." << std::endl;
@@ -394,8 +430,7 @@ int main(int argc, char* argv[]) {
         if (verbosity >= 1) {
             std::cout << "Solving with Optim..." << std::endl;
         }
-        std::map<Mon, std::complex<double>> startVals;
-        res = solveOptim(objective, constraintsZero, momentMatrices, startVals, verbosity, maxIters, numExtra, stepSize, tolerance);
+        res = solveOptim(objective, constraintsZero, momentMatrices, varVals, verbosity, maxIters, numExtra, stepSize, tolerance);
     }
     if (useDual) {
         res = -res;
@@ -405,6 +440,66 @@ int main(int argc, char* argv[]) {
     // If I3322, convert to the 0/1 version too
     if (problemName == "I3322" && !use01) {
         std::cout << "Result in 0/1: " << (res/4.0)-1.0 << std::endl;
+    }
+
+    // If Ising, round and provide a lower bound too
+    if (problemName == "ISING") {
+
+        std::map<Mon, std::complex<double>> roundedVals;
+        for (auto& pair : varVals) {
+            if (pair.first.size() == 1 && pair.first[0].first != 'z' && pair.first[0].first != 'y') {
+                roundedVals[pair.first] = roundTo1(std::real(pair.second));
+            }
+        }
+        if (roundedVals.size() == 0) {
+            for (auto& pair : bellFunc) {
+                roundedVals[pair.first] = roundTo1(std::real(pair.second));
+            }
+        }
+        std::map<Mon, std::complex<double>> roundedValsAll = roundedVals;
+        for (auto& pair : roundedVals) {
+            for (auto& pair2 : roundedVals) {
+                if (pair.first < pair2.first) {
+                    roundedValsAll[pair.first*pair2.first] = roundedVals[pair.first]*roundedVals[pair2.first];
+                }
+            }
+        }
+        double lowerBound = bellFunc.eval(roundedValsAll).real();
+        std::cout << "Lower bound: " << lowerBound << std::endl;
+
+        // Anneal to try to get a better solution
+        std::map<Mon, std::complex<double>> bestVals = roundedVals;
+        std::map<Mon, std::complex<double>> newVals = roundedVals;
+        std::map<Mon, std::complex<double>> prevVals = roundedVals;
+        double bestVal = lowerBound;
+        double temp = 1;
+        int numIters = 1000;
+        for (int i=0; i<numIters; i++) {
+            prevVals = newVals;
+            for (auto& pair : newVals) {
+                if (rand(0, 1) < std::exp(-1.0/temp)) {
+                    newVals[pair.first] = -newVals[pair.first];
+                }
+            }
+            std::map<Mon, std::complex<double>> newValsAll = newVals;
+            for (auto& pair : newVals) {
+                for (auto& pair2 : newVals) {
+                    if (pair.first < pair2.first) {
+                        newValsAll[pair.first*pair2.first] = newVals[pair.first]*newVals[pair2.first];
+                    }
+                }
+            }
+            double newVal = bellFunc.eval(newValsAll).real();
+            if (newVal > bestVal) {
+                bestVal = newVal;
+                bestVals = newVals;
+            } else if (rand(0, 1) > std::exp((newVal-bestVal)/temp)) {
+                newVals = prevVals;
+            }
+            temp -= 1.0/numIters;
+        }
+        std::cout << "After annealing: " << bestVal << std::endl;
+
     }
 
     // Start a timer

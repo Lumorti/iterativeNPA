@@ -47,7 +47,7 @@ Mon::Mon(std::string asString) {
             currentIndex += asString[i];
 
         // Otherwise it's a variable
-        } else if (asString[i] >= 'A' && asString[i] <= 'Z') {
+        } else if (asString[i] >= 'A' && asString[i] <= 'z') {
             currentIndex += asString[i];
             if (currentVariable != ' ') {
                 toReturn.push_back(std::make_pair(currentVariable, std::stoi(currentIndex)));

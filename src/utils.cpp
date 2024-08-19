@@ -528,7 +528,7 @@ void primalToDual(Poly& objective, std::vector<std::vector<std::vector<Poly>>>& 
     objective = Poly();
     for (int i=0; i<b.size(); i++) {
         if (std::abs(b[i]) > 1e-10) {
-            objective[Mon("<D" + std::to_string(i) + ">")] = b[i];
+            objective[Mon("<y" + std::to_string(i) + ">")] = b[i];
         }
     }
 
@@ -566,7 +566,7 @@ void primalToDual(Poly& objective, std::vector<std::vector<std::vector<Poly>>>& 
                     continue;
                 }
                 if (std::abs(it.value()) > 1e-10) {
-                    momentMatrices[0][i][j][Mon("<D" + std::to_string(k) + ">")] -= it.value();
+                    momentMatrices[0][i][j][Mon("<y" + std::to_string(k) + ">")] -= it.value();
                 }
             }
         }
