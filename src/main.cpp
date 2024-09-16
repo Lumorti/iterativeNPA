@@ -243,7 +243,7 @@ int main(int argc, char* argv[]) {
         } else if (argAsString == "-D") {
             useDual = true;
 
-        // If told to use the Ising model TODO
+        // If told to use the Ising model
         } else if (argAsString == "--ising") {
             int numInputs = std::stoi(argv[i+1]);
             problemName = "ISING";
@@ -334,25 +334,71 @@ int main(int argc, char* argv[]) {
         std::cout << "Largest moment matrix has size " << largestMomentMatrix << std::endl;
     }
 
-    // Constrain that the objective be below a certain value TODO
-    if (testing == 3) {
+    // Try doing smaller submatrices at a time TODO
+    if (testing == 4) {
 
-        Poly shouldBePos = Poly(5.01) + objective;
-        //std::cout << objective << std::endl;
+        // Get a list of all the variables
+        std::set<Mon> monomialList;
+        addVariables(monomialList, momentMatrices[0]);
+        std::set<Mon> monomsInObjective;
+        addVariables(monomsInObjective, objective);
 
-        //Poly shouldBePos = Poly("-0.1618-<D0>");
+        // Init the var list
+        std::map<Mon, std::complex<double>> currentVals;
+        for (auto& mon : monomialList) {
+            currentVals[mon] = 0;
+        }
 
-        // Add a new column to the moment matrix
-        //momentMatrices[0].push_back(std::vector<Poly>(momentMatrices[0].size(), Poly()));
-        //for (int i=0; i<momentMatrices[0].size(); i++) {
-            //momentMatrices[0][i].push_back(Poly());
-        //}
-        //momentMatrices[0][momentMatrices[0].size()-1][momentMatrices[0].size()-1] = shouldBePos;
+        // For some iteration count
+        for (int i=0; i<maxIters; i++) {
 
-        constraintsZero.push_back(shouldBePos);
+            // Pick a variables to optimize over
+            //std::set<Mon> varsToOptimize = monomialList;
+            std::set<Mon> varsToOptimize = monomsInObjective;
+            int numVars = 7;
+            while (varsToOptimize.size() < numVars + monomsInObjective.size()) {
+                Mon var = *std::next(monomialList.begin(), rand(0, monomialList.size()-1));
+                if (varsToOptimize.find(var) == varsToOptimize.end()) {
+                    varsToOptimize.insert(var);
+                }
+            }
+
+            // Randomly remove some
+            //int toRemove = 10;
+            //for (int j=0; j<toRemove; j++) {
+                //Mon var = *std::next(varsToOptimize.begin(), rand(0, varsToOptimize.size()-1));
+                //varsToOptimize.erase(var);
+            //}
+
+            // Fix everything else in the moment matrix
+            std::vector<std::vector<Poly>> fixedMomentMatrix = momentMatrices[0];
+            for (int i=0; i<fixedMomentMatrix.size(); i++) {
+                for (int j=0; j<fixedMomentMatrix[i].size(); j++) {
+                    Mon mon = fixedMomentMatrix[i][j].getKey();
+                    if (varsToOptimize.find(mon) == varsToOptimize.end()) {
+                        fixedMomentMatrix[i][j] = Poly(currentVals[mon]);
+                    }
+                }
+            }
+
+            // Solve this problem
+            std::map<Mon, std::complex<double>> varVals;
+            std::pair<int,int> varBounds = {-1, 1};
+            std::vector<std::vector<std::vector<Poly>>> fixedMats = {fixedMomentMatrix};
+            double res = solveMOSEK(objective, fixedMats, constraintsZero, constraintsPositive, verbosity, varBounds, &varVals);
+            std::cout << res << std::endl;
+
+            // Set the variables
+            for (auto& pair : varVals) {
+                currentVals[pair.first] = pair.second;
+            }
+
+        }
+
+        return 0;
 
     }
-
+    
     // Output the problem
     if (verbosity >= 2) {
         if (objective.size() > 0) {
