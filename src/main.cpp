@@ -398,6 +398,92 @@ int main(int argc, char* argv[]) {
         return 0;
 
     }
+
+    // Try to turn the SDP into a linear program TODO
+    if (testing == 5) {
+
+        // Solve just as a linear system
+        std::vector<std::vector<Poly>> momentMatricesL1 = generateAllMomentMatrices(bellFunc, {}, 1, verbosity)[0];
+        std::vector<std::vector<Poly>> momentMatricesL2 = generateAllMomentMatrices(bellFunc, {}, 2, verbosity)[0];
+        std::vector<std::vector<Poly>> momentMatricesL3 = generateAllMomentMatrices(bellFunc, {}, 3, verbosity)[0];
+        std::vector<std::vector<Poly>> momentMatCopy = momentMatrices[0];
+        momentMatrices = {};
+
+        std::map<Mon, std::complex<double>> xMap;
+        xMap[Mon()] = 1;
+        for (int i=0; i<momentMatCopy.size(); i++) {
+            for (int j=0; j<momentMatCopy[i].size(); j++) {
+                xMap[momentMatCopy[i][j].getKey()] = 0;
+            }
+        }
+
+        double prevBound = 0;
+        for (int iter=0; iter<maxIters; iter++) {
+
+            std::cout << "Linear solving " << iter << std::endl;
+            double res = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, {-1, 1}, &xMap);
+
+            //if (i == 200) {
+                //std::cout << "Switching to L2" << std::endl;
+                //momentMatCopy = momentMatricesL2;
+            //}
+            prevBound = res;
+
+            // Get the resulting matrix
+            std::cout << "Getting matrix" << std::endl;
+            Eigen::MatrixXd X = Eigen::MatrixXd::Zero(momentMatCopy.size(), momentMatCopy.size());
+            for (size_t i=0; i<momentMatCopy.size(); i++) {
+                for (size_t j=i; j<momentMatCopy[i].size(); j++) {
+                    X(i, j) = xMap[momentMatCopy[i][j].getKey()].real();
+                    X(j, i) = X(i, j);
+                }
+            }
+
+            // Get the eigenvalues and vectors
+            std::cout << "Eigensolving" << std::endl;
+            Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es(X);
+            Eigen::VectorXd eigVals = es.eigenvalues().real();
+            Eigen::MatrixXd eigVecs = es.eigenvectors().real();
+
+            std::cout << constraintsPositive.size() << " " << res << " " << eigVals.minCoeff() << std::endl;
+
+            if (eigVals.minCoeff() > -tolerance) {
+                break;
+            }
+
+            // For each negative eigenvalue, store the eigenvector
+            std::vector<Eigen::VectorXd> negEigVecs;
+            for (int i=0; i<eigVals.size(); i++) {
+                if (eigVals(i) < -tolerance) {
+                    negEigVecs.push_back(eigVecs.col(i));
+                }
+            }
+            if (negEigVecs.size() == 0) {
+                break;
+            }
+
+            // Add these as new cons
+            std::cout << "Adding constraints" << std::endl;
+            for (int i=0; i<negEigVecs.size(); i++) {
+                Poly newCon;
+                for (int j=0; j<momentMatCopy.size(); j++) {
+                    for (int k=0; k<momentMatCopy[j].size(); k++) {
+                        newCon[momentMatCopy[j][k].getKey()] += negEigVecs[i](j) * negEigVecs[i](k);
+                    }
+                }
+                constraintsPositive.push_back(newCon);
+            }
+
+            // Limit the number of constraints, removing old ones
+            //if (constraintsPositive.size() > 150) {
+                //constraintsPositive.erase(constraintsPositive.begin(), constraintsPositive.begin() + constraintsPositive.size() - 100);
+            //}
+
+        }
+
+        return 0;
+
+    }
     
     // Output the problem
     if (verbosity >= 2) {
