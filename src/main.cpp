@@ -541,6 +541,168 @@ int main(int argc, char* argv[]) {
 
     }
 
+    // Annealing type approach TODO
+    // 20 giving 5.00588: +1 +<B2B3> +<B1> +<B2A3> +<B2B1> +<B1A2> +<B3A3> +<B2> +<A3A1> +<A2> +<A3> +<A1A3> +<A2B2> +<A1B1> +<A1B3> +<A2B3> +<A3B1> +<B2A1> +<B3> +<A1>
+    // 55 giving 5.0035: +1 +<B2A3A2> +<B3A2B1> +<A3A2A1> +<B1B2> +<A2B3> +<A3A1A2> +<A3A1A1> +<A2A1A2> +<A1B2> +<A2B1> +<A1B1> +<A3B1> +<B1A3A2> +<A2A1B2> +<B1B3> +<B3B2A2> +<A1B3> +<B1B2B1> +<A1A3> +<B2A1A2> +<B2A2A3> +<B3A2A2> +<A2B1B2> +<A1A2A1> +<A2B2> +<A1B1A2> +<A1B2B3> +<A3B2> +<B1B2A1> +<A1A1A1> +<A2A1> +<A2A3A1> +<A1A2> +<B1A2A3> +<B2B1B2> +<A1B2A2> +<B2B1> +<A1B2B1> +<B1B2A3> +<A3A1B1> +<B3A3A3> +<A2B1A1> +<B3A2A1> +<A3B2A3> +<A2A3B1> +<B3A1A2> +<B2A2B1> +<A3A2A2> +<B2B2B3> +<B2A3B1> +<A2B3B2> +<A1A1A3> +<B1B3A2> +<A2A3A3>
+    // 55 giving 5.0035: +1 +<B2A1> +<A3B2A2> +<A1B1B2> +<B3A2A1> +<B2B1A2> +<B2A2> +<B1B2> +<B1A2> +<A2A2A2> +<B3A1> +<A2A1B1> +<B2A3> +<B2A1B1> +<B2A1A2> +<A2B3> +<A1A2A1> +<A2B3B2> +<B3B2B1> +<B2A3B1> +<A2A1A2> +<A1A2A2> +<A2B2A3> +<A2B2A1> +<A1B1A1> +<B1B2B1> +<A2B3B1> +<B3B1A1> +<B1A2B2> +<B3B1B2> +<A3B1> +<B1A3A1> +<A3A1B2> +<A3B1A2> +<A2A2B3> +<B3A1A3> +<A3A3B2> +<B2A3B2> +<A2A1B2> +<A1A1A2> +<A1B2A1> +<B2B1B2> +<B1A3A2> +<A3B3A1> +<A2A3A3> +<A1B1A2> +<A1B3B2> +<B2B1> +<A3B1B2> +<A1A1A3> +<A1B3A2> +<A3B2B2> +<A2B3A2> +<A2B3B3> +<B3B2A2>
+    // 5.5
+    // 5.00376
+    // 5.0035
+    if (testing >= 10) {
+
+        int matrixSizeLimit = testing;
+
+        momentMatrices = generateAllMomentMatrices(bellFunc, {}, 1, verbosity);
+
+        std::vector<Mon> monomialsInProblemVec;
+        addSingleMonomials(monomialsInProblemVec, bellFunc);
+        std::vector<Poly> possibleMonomials = generateMonomials(monomialsInProblemVec, level, 0);
+
+        // Correlation matrix for each monomial
+        // First val is average score when present
+        // Second val is average score when not present
+        std::vector<std::vector<std::pair<double,double>>> correlations(possibleMonomials.size(), std::vector<std::pair<double,double>>(possibleMonomials.size(), {0,0}));
+        std::vector<std::vector<std::pair<int,int>>> correlationCounts(possibleMonomials.size(), std::vector<std::pair<int,int>>(possibleMonomials.size(), {0,0}));
+
+        // For some number of iterations
+        double bestRes = 1000000;
+        std::vector<Poly> topRow = {Poly(1)};
+        for (int i=0; i<matrixSizeLimit; i++) {
+            topRow.push_back(*std::next(possibleMonomials.begin(), i));
+        }
+        for (int i=0; i<maxIters; i++) {
+
+            std::vector<Poly> prevTopRow = topRow;
+
+            // If we're at the max matrix size, remove a random moment
+            //topRow = {Poly(1)};
+            if (topRow.size() >= matrixSizeLimit) {
+                for (int j=0; j<2; j++) {
+                    topRow.erase(topRow.begin() + rand(1, topRow.size()-1));
+                }
+            }
+
+            // If we're less than the max matrix size, add a random moment
+            while (topRow.size() < matrixSizeLimit) {
+                Poly newMoment = *std::next(possibleMonomials.begin(), rand(0, possibleMonomials.size()-1));
+                if (std::find(topRow.begin(), topRow.end(), newMoment) == topRow.end()) {
+                    topRow.push_back(newMoment);
+                }
+            }
+
+            // Regenerate the moment matrix
+            momentMatrices[0] = generateFromTopRow(topRow, use01);
+
+            // Run the solver
+            for (int j=0; j<topRow.size(); j++) {
+                std::cout << topRow[j] << " ";
+            }
+            std::cout << std::endl;
+            std::map<Mon, std::complex<double>> varVals;
+            double res = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, 0, {-1, 1}, &varVals);
+            std::cout << i << " " << topRow.size() << " " << res << " " << bestRes << std::endl;
+
+            // For each pair, update the correlation matrix
+            for (int j=0; j<possibleMonomials.size(); j++) {
+                for (int k=j; k<possibleMonomials.size(); k++) {
+                    if (std::find(topRow.begin(), topRow.end(), possibleMonomials[j]) != topRow.end() && std::find(topRow.begin(), topRow.end(), possibleMonomials[k]) != topRow.end()) {
+                        correlations[j][k].first += std::exp(res);
+                        correlationCounts[j][k].first++;
+                    } else {
+                        correlations[j][k].second += std::exp(res);
+                        correlationCounts[j][k].second++;
+                    }
+                }
+            }
+
+            // If it's worse or equal, revert
+            if (res >= bestRes) {
+                topRow = prevTopRow;
+            } else {
+                bestRes = res;
+            }
+
+            if (res < 5.00351) { 
+                break;
+            }
+
+        }
+
+        // Average the correlations
+        for (int i=0; i<correlations.size(); i++) {
+            for (int j=i; j<correlations[i].size(); j++) {
+                if (correlationCounts[i][j].first > 0) {
+                    correlations[i][j].first /= correlationCounts[i][j].first;
+                }
+                if (correlationCounts[i][j].second > 0) {
+                    correlations[i][j].second /= correlationCounts[i][j].second;
+                }
+            }
+        }
+
+        // Output the monomials
+        std::cout << "Monomials: " << std::endl;
+        for (int i=0; i<possibleMonomials.size(); i++) {
+            std::cout << possibleMonomials[i] << " ";
+        }
+        std::cout << std::endl;
+        
+        // Output the correlations
+        //std::cout << "Correlations: " << std::endl;
+        //for (int i=0; i<correlations.size(); i++) {
+            //for (int j=0; j<correlations[i].size(); j++) {
+                //std::cout << "(" << correlations[i][j] << " ";
+            //}
+            //std::cout << std::endl;
+        //}
+
+        // Pick the best
+        std::vector<std::tuple<Poly,Poly,double,double>> bestPairs;
+        for (int i=0; i<correlations.size(); i++) {
+            for (int j=i; j<correlations[i].size(); j++) {
+                if (correlationCounts[i][j].first > 0 && correlationCounts[i][j].second > 0) {
+                    bestPairs.push_back(std::make_tuple(possibleMonomials[i], possibleMonomials[j], correlations[i][j].first, correlations[i][j].second));
+                }
+            }
+        }
+        std::sort(bestPairs.begin(), bestPairs.end(), [](auto& left, auto& right) {
+            return (std::get<2>(left) - std::get<3>(left)) < (std::get<2>(right) - std::get<3>(right));
+            //return (std::get<3>(left)) > (std::get<3>(right));
+        });
+
+        // Output the best pairs
+        std::cout << "Best pairs: " << std::endl;
+        for (int i=0; i<bestPairs.size(); i++) {
+            std::cout << std::get<0>(bestPairs[i]) << " " << std::get<1>(bestPairs[i]) << " " << std::get<2>(bestPairs[i]) << " " << std::get<3>(bestPairs[i]) << std::endl;
+        }
+
+        // Form a top row based on the first monomials 
+        topRow = {Poly(1)};
+        int k = 0;
+        while (topRow.size() < matrixSizeLimit) {
+            Poly mon1 = std::get<0>(bestPairs[k]);
+            Poly mon2 = std::get<1>(bestPairs[k]);
+            if (std::find(topRow.begin(), topRow.end(), mon1) == topRow.end()) {
+                topRow.push_back(mon1);
+            }
+            if (std::find(topRow.begin(), topRow.end(), mon2) == topRow.end()) {
+                topRow.push_back(mon2);
+            }
+            k++;
+        }
+
+        // Check the performance of this
+        momentMatrices[0] = generateFromTopRow(topRow, use01);
+        std::map<Mon, std::complex<double>> varVals;
+        for (int j=0; j<topRow.size(); j++) {
+            std::cout << topRow[j] << " ";
+        }
+        std::cout << std::endl;
+        double res = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, 0, {-1, 1}, &varVals);
+        std::cout << "Final result: " << res << std::endl;
+
+    }
+
     // Solve the problem
     std::pair<int,int> varBounds = {-1, 1};
     if (useDual) {
