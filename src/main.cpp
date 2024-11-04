@@ -77,11 +77,13 @@ int main(int argc, char* argv[]) {
     int testing = 0;
     int verbosity = 1;
     int maxIters = 10000000;
+    int maxMoments = 10000000;
     int numCores = 1;
     bool use01 = false;
     double stepSize = 100;
     double tolerance = 1e-8;
     int numExtra = 0;
+    bool generateData = false;
     std::string solver = "MOSEK";
     std::string seed = "";
     std::string problemName = "CHSH";
@@ -176,6 +178,11 @@ int main(int argc, char* argv[]) {
             level = std::stoi(argv[i+1]);
             i++;
 
+        // If told to generate data
+        } else if (argAsString == "-d") {
+            generateData = true;
+            verbosity = 0;
+
         // If adding an extra moment to the top row
         } else if (argAsString == "-e") {
             extraMoments.push_back(std::string(argv[i+1]));
@@ -184,6 +191,11 @@ int main(int argc, char* argv[]) {
         // Set the iteration limit
         } else if (argAsString == "-i") {
             maxIters = std::stoi(argv[i+1]);
+            i++;
+
+        // Set the max moment limit
+        } else if (argAsString == "-m") {
+            maxMoments = std::stoi(argv[i+1]);
             i++;
 
         // Set the seed
@@ -239,7 +251,9 @@ int main(int argc, char* argv[]) {
             std::cout << "  -t <int>        Testing some new idea" << std::endl;
             std::cout << "  -e <str>        Add an extra moment to the top row" << std::endl;
             std::cout << "  -E <int>        Number of extra iterations to do" << std::endl;
+            std::cout << "  -m <int>        Maximum size of moment matrix" << std::endl;
             std::cout << "  -M <str>        Use a specific top row for the moment matrix" << std::endl;
+            std::cout << "  -d              Generate data" << std::endl;
             std::cout << "  -h              Display this help message" << std::endl;
             std::cout << "  -D              Use the dual of the problem" << std::endl;
             std::cout << "  -s S            Use SCS as the solver" << std::endl;
@@ -449,6 +463,54 @@ int main(int argc, char* argv[]) {
             }
         }
         std::cout << "Largest moment matrix has size " << largestMomentMatrix << std::endl;
+    }
+
+    // If told to generate data, keep trying random sets of moments TODO
+    if (generateData) {
+
+        // Possible list of monoms to choose from
+        std::vector<Mon> monomialsInProblemVec;
+        addSingleMonomials(monomialsInProblemVec, bellFunc);
+        std::vector<Poly> possibleMonomials = generateMonomials(monomialsInProblemVec, level, 0);
+        std::vector<Poly> topRow = {Poly(1)};
+        for (int i=0; i<possibleMonomials.size(); i++) {
+            topRow.push_back(possibleMonomials[i]);
+        }
+        momentMatrices[0] = generateFromTopRow(topRow, use01);
+        std::map<Mon, std::complex<double>> varVals;
+        std::pair<int,int> varBounds = {-1, 1};
+
+        for (int i=0; i<maxIters; i++) { 
+
+            // Randomly choose a set of moments
+            int amount = std::min(maxMoments-1, int(possibleMonomials.size()));
+            std::vector<int> indices;
+            for (int j=0; j<possibleMonomials.size(); j++) {
+                indices.push_back(j);
+            }
+            std::random_shuffle(indices.begin(), indices.end());
+            topRow = {Poly(1)};
+            for (int j=0; j<amount; j++) {
+                topRow.push_back(possibleMonomials[indices[j]]);
+            }
+            momentMatrices[0] = generateFromTopRow(topRow, use01);
+
+            // Solve the problem
+            double res = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, varBounds, &varVals);
+            std::cout << objective;
+            std::cout << " | ";
+            for (int j=0; j<topRow.size(); j++) {
+                std::cout << topRow[j] << " ";
+            }
+            std::cout << "| ";
+            std::cout << topRow.size();
+            std::cout << " | ";
+            std::cout << std::setprecision(10) << res << std::endl;
+
+        }
+
+        return 0;
+
     }
 
     // Try doing smaller submatrices at a time TODO

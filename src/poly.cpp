@@ -427,6 +427,7 @@ std::ostream& operator<<(std::ostream& os, const Poly& p) {
     }
 
     // Iterate through the polynomial
+    int count = 0;
     for (auto& term : ordered) {
         double realPart = term.second.real();
         double imagPart = term.second.imag();
@@ -435,7 +436,11 @@ std::ostream& operator<<(std::ostream& os, const Poly& p) {
                 if (realPart == -1) {
                     os << "-" << term.first;
                 } else if (realPart == 1) {
-                    os << "+" << term.first;
+                    if (count == 0) {
+                        os << term.first;
+                    } else {
+                        os << "+" << term.first;
+                    }
                 } else if (term.first.size() == 0 && realPart < 0) {
                     os << realPart;
                 } else if (term.first.size() == 0 && realPart > 0) {
@@ -475,6 +480,7 @@ std::ostream& operator<<(std::ostream& os, const Poly& p) {
                 }
             }
         }
+        count++;
     }
 
     // Return the stream
