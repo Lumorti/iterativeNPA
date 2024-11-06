@@ -61,6 +61,22 @@ int roundTo1(double x) {
     return x >= 0 ? 1 : -1;
 }
 
+// From https://stackoverflow.com/questions/28711797/generating-n-choose-k-permutations-in-c
+template <typename T>
+void combinations(const std::vector<T>& v, std::size_t count) {
+    assert(count <= v.size());
+    std::vector<bool> bitset(v.size() - count, 0);
+    bitset.resize(v.size(), 1);
+    do {
+        for (std::size_t i = 0; i != v.size(); ++i) {
+            if (bitset[i]) {
+                std::cout << v[i] << " ";
+            }
+        }
+        std::cout << std::endl;
+    } while (std::next_permutation(bitset.begin(), bitset.end()));
+}
+
 // Generic entry function
 int main(int argc, char* argv[]) {
 
@@ -384,7 +400,7 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    // Manual paritioning of the moment matrix TODO
+    // Manual paritioning of the moment matrix 
     if (testing == -1) {
         
         std::vector<int> indexList;
@@ -465,7 +481,7 @@ int main(int argc, char* argv[]) {
         std::cout << "Largest moment matrix has size " << largestMomentMatrix << std::endl;
     }
 
-    // If told to generate data, keep trying random sets of moments TODO
+    // If told to generate data, keep trying sets of moments TODO
     if (generateData) {
 
         // Possible list of monoms to choose from
@@ -474,24 +490,38 @@ int main(int argc, char* argv[]) {
         std::vector<Poly> possibleMonomials = generateMonomials(monomialsInProblemVec, level, 0);
         std::vector<Poly> topRow = {Poly(1)};
         for (int i=0; i<possibleMonomials.size(); i++) {
-            topRow.push_back(possibleMonomials[i]);
+            if (possibleMonomials[i].size() == 1) {
+                topRow.push_back(possibleMonomials[i]);
+            }
         }
         momentMatrices[0] = generateFromTopRow(topRow, use01);
         std::map<Mon, std::complex<double>> varVals;
         std::pair<int,int> varBounds = {-1, 1};
+        int amountExtra = std::min(maxMoments, int(possibleMonomials.size()));
+        std::vector<Poly> topRowL1 = momentMatrices[0][0];
 
-        for (int i=0; i<maxIters; i++) { 
-
-            // Randomly choose a set of moments
-            int amount = std::min(maxMoments-1, int(possibleMonomials.size()));
-            std::vector<int> indices;
-            for (int j=0; j<possibleMonomials.size(); j++) {
-                indices.push_back(j);
+        // Iterate over all sets of moments
+        std::vector<Poly> v;
+        for (int i=0; i<possibleMonomials.size(); i++) {
+            if (std::find(topRow.begin(), topRow.end(), possibleMonomials[i]) == topRow.end()) {
+                v.push_back(possibleMonomials[i]);
             }
-            std::random_shuffle(indices.begin(), indices.end());
-            topRow = {Poly(1)};
-            for (int j=0; j<amount; j++) {
-                topRow.push_back(possibleMonomials[indices[j]]);
+        }
+        // output v
+        for (int i=0; i<v.size(); i++) {
+            std::cout << v[i] << std::endl;
+        }
+        int count = amountExtra;
+        std::vector<bool> bitset(v.size() - count, 0);
+        bitset.resize(v.size(), 1);
+        do {
+
+            // Generate the moment matrix
+            topRow = topRowL1;
+            for (std::size_t i = 0; i != v.size(); ++i) {
+                if (bitset[i]) {
+                    topRow.push_back(v[i]);
+                }
             }
             momentMatrices[0] = generateFromTopRow(topRow, use01);
 
@@ -507,13 +537,50 @@ int main(int argc, char* argv[]) {
             std::cout << " | ";
             std::cout << std::setprecision(10) << res << std::endl;
 
-        }
+        } while (std::next_permutation(bitset.begin(), bitset.end()));
+
+        // Iterate over all sets of moments
+        //std::vector<bool> mask(possibleMonomials.size(), false);
+        //for (int i=0; i<amount; i++) {
+            //mask[mask.size()-1-i] = true;
+        //}
+        //std::vector<int> indices;
+        //for (int j=0; j<possibleMonomials.size(); j++) {
+            //indices.push_back(j);
+        //}
+        //do {
+
+            //// Add this permutation to the moment matrix
+            //topRow = {Poly(1)};
+            //for (int j=0; j<amount; j++) {
+                ////topRow.push_back(possibleMonomials[indices[j]]);
+                //if (mask[j]) {
+                    //topRow.push_back(possibleMonomials[indices[j]]);
+                //}
+            //}
+            //momentMatrices[0] = generateFromTopRow(topRow, use01);
+
+            //// Solve the problem
+            //double res = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, varBounds, &varVals);
+            //std::cout << objective;
+            //std::cout << " | ";
+            //for (int j=0; j<topRow.size(); j++) {
+                //std::cout << topRow[j] << " ";
+            //}
+            //std::cout << "| ";
+            //std::cout << topRow.size();
+            //std::cout << " | ";
+            //std::cout << std::setprecision(10) << res << std::endl;
+
+        //// Permute the index list
+        //} while (std::next_permutation(indices.begin(), indices.end()));
+        //} while (std::prev_permutation(mask.begin(), mask.end()));
 
         return 0;
 
     }
 
-    // Try doing smaller submatrices at a time TODO
+    // Try doing smaller submatrices at a time
     if (testing == 4) {
 
         // Get a list of all the variables
@@ -578,7 +645,7 @@ int main(int argc, char* argv[]) {
 
     }
 
-    // Try to turn the SDP into a linear program TODO
+    // Try to turn the SDP into a linear program
     if (testing == 5) {
 
         // Solve just as a linear system
@@ -686,7 +753,7 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    // Do level 1, then 2, then 3 TODO
+    // Do level 1, then 2, then 3
     if (testing == 2) {
 
         std::map<Mon, std::complex<double>> startVals;
@@ -720,7 +787,7 @@ int main(int argc, char* argv[]) {
 
     }
 
-    // Same as below, but just checking eigenvalues TODO
+    // Same as below, but just checking eigenvalues
     if (testing == 8) {
 
         std::vector<Mon> monomialsInProblemVec;
