@@ -490,15 +490,14 @@ int main(int argc, char* argv[]) {
         std::vector<Poly> possibleMonomials = generateMonomials(monomialsInProblemVec, level, 0);
         std::vector<Poly> topRow = {Poly(1)};
         for (int i=0; i<possibleMonomials.size(); i++) {
-            if (possibleMonomials[i].size() == 1) {
+            if (possibleMonomials[i].size() > 0 && possibleMonomials[i].getKey().size() == 1) {
                 topRow.push_back(possibleMonomials[i]);
             }
         }
-        momentMatrices[0] = generateFromTopRow(topRow, use01);
         std::map<Mon, std::complex<double>> varVals;
         std::pair<int,int> varBounds = {-1, 1};
         int amountExtra = std::min(maxMoments, int(possibleMonomials.size()));
-        std::vector<Poly> topRowL1 = momentMatrices[0][0];
+        std::vector<Poly> topRowL1 = topRow;
 
         // Iterate over all sets of moments
         std::vector<Poly> v;
@@ -507,13 +506,11 @@ int main(int argc, char* argv[]) {
                 v.push_back(possibleMonomials[i]);
             }
         }
-        // output v
-        for (int i=0; i<v.size(); i++) {
-            std::cout << v[i] << std::endl;
-        }
         int count = amountExtra;
-        std::vector<bool> bitset(v.size() - count, 0);
-        bitset.resize(v.size(), 1);
+        std::vector<bool> bitset(v.size() - count, false);
+        for (int i=0; i<count; i++) {
+            bitset.push_back(true);
+        }
         do {
 
             // Generate the moment matrix
