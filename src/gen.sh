@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # For standard I3322
-for i in {1..10}
+for i in {1..20}
 do
-    ./run --i3322 -l 3 -d -m $i | tee -a data/i3322.dat
+    ./run --i3322 -l 3 -d -m $i >> data/i3322.dat
 done
 
 # For randomized I3322

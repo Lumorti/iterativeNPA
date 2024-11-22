@@ -577,6 +577,83 @@ int main(int argc, char* argv[]) {
 
     }
 
+    // Iterative scheme TODO
+    if (testing == 7) {
+
+        // Solve this problem
+        std::map<Mon, std::complex<double>> varVals;
+        std::pair<int,int> varBounds = {-1, 1};
+        double res = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, varBounds, &varVals);
+        std::cout << res << std::endl;
+
+        // Add the constraint that the objective function is bounded
+        constraintsPositive.push_back(Poly(res) - objective);
+        res = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, varBounds, &varVals);
+        std::cout << res << std::endl;
+
+        // A1, A2, B1, B2
+        //constraintsPositive.push_back(Poly(2*sqrt(2)) - Poly("<A1B1>+<A1B2>+<A2B1>-<A2B2>"));
+        //constraintsPositive.push_back(Poly("<A1B1>+<A1B2>+<A2B1>-<A2B2>") - Poly(-2*sqrt(2)));
+
+        // A1, A2, B2, B3
+        //constraintsPositive.push_back(Poly(2*sqrt(2)) - Poly("<A1B3>+<A1B2>+<A2B3>-<A2B2>"));
+        //constraintsPositive.push_back(Poly("<A1B3>+<A1B2>+<A2B3>-<A2B2>") - Poly(-2*sqrt(2)));
+
+        // A1, A2, B1, B3
+        //constraintsPositive.push_back(Poly(2*sqrt(2)) - Poly("<A1B1>+<A1B3>+<A2B1>-<A2B3>"));
+        //constraintsPositive.push_back(Poly("<A1B1>+<A1B3>+<A2B1>-<A2B3>") - Poly(-2*sqrt(2)));
+
+        // A1, A3, B2, B3
+        //constraintsPositive.push_back(Poly(2*sqrt(2)) - Poly("<A1B3>+<A1B2>+<A3B3>-<A3B2>"));
+        //constraintsPositive.push_back(Poly("<A1B3>+<A1B2>+<A3B3>-<A3B2>") - Poly(-2*sqrt(2)));
+
+        // A2, A3, B1, B2
+        //constraintsPositive.push_back(Poly(2*sqrt(2)) - Poly("<A2B1>+<A2B2>+<A3B1>-<A3B2>"));
+        //constraintsPositive.push_back(Poly("<A2B1>+<A2B2>+<A3B1>-<A3B2>") - Poly(-2*sqrt(2)));
+
+        // Individually bound each variable
+        for (auto& pair : varVals) {
+            if (pair.first.size() == 0) {
+                continue;
+            }
+            std::cout << "For variable " << pair.first << std::endl;
+            Poly newObj = Poly(pair.first);
+            res = solveMOSEK(newObj, momentMatrices, constraintsZero, constraintsPositive, 0, varBounds, &varVals);
+            std::cout << "max: " << res << std::endl;
+            Poly newCon = Poly(res) - newObj;
+            std::cout << "adding constraint: " << newCon << " >= 0" << std::endl;
+            constraintsPositive.push_back(newCon);
+            newObj = Poly(-1, pair.first);
+            res = solveMOSEK(newObj, momentMatrices, constraintsZero, constraintsPositive, 0, varBounds, &varVals);
+            std::cout << "min: " << -res << std::endl;
+            newCon = -newObj - Poly(-res);
+            constraintsPositive.push_back(newCon);
+            std::cout << "adding constraint: " << newCon << " >= 0" << std::endl;
+        }
+
+        // Bound each positivity constraint
+        for (int i=0; i<constraintsPositive.size(); i++) {
+            std::cout << "For constraint " << constraintsPositive[i] << std::endl;
+            res = solveMOSEK(constraintsPositive[i], momentMatrices, constraintsZero, constraintsPositive, 0, varBounds, &varVals);
+            std::cout << "max: " << res << std::endl;
+            Poly newCon = Poly(res) - constraintsPositive[i];
+            constraintsPositive.push_back(newCon);
+            std::cout << "adding constraint: " << newCon << " >= 0" << std::endl;
+            res = solveMOSEK(-constraintsPositive[i], momentMatrices, constraintsZero, constraintsPositive, 0, varBounds, &varVals);
+            std::cout << "min: " << -res << std::endl;
+            newCon = -constraintsPositive[i] - Poly(-res);
+            constraintsPositive.push_back(newCon);
+            std::cout << "adding constraint: " << newCon << " >= 0" << std::endl;
+        }
+
+        // Solve this problem
+        res = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, varBounds, &varVals);
+        std::cout << "new i3322: " << res << std::endl;
+
+        return 0;
+
+    }
+
     // Try doing smaller submatrices at a time
     if (testing == 4) {
 
