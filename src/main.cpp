@@ -577,6 +577,81 @@ int main(int argc, char* argv[]) {
 
     }
 
+    // Represent it as a linear combination of random positive matrices TODO
+    if (testing >= 6) {
+
+        // Generate the list of positive matrices
+        int numMats = testing;
+        int matSize = momentMatrices[0].size();
+        std::vector<Eigen::MatrixXd> positiveMats;
+        for (int i=0; i<numMats; i++) {
+            Eigen::VectorXd v = Eigen::VectorXd::Random(matSize);
+            Eigen::MatrixXd mat = v * v.transpose();
+            positiveMats.push_back(mat);
+        }
+        //for (int i=0; i<numMats; i++) {
+            //Eigen::VectorXd v = Eigen::VectorXd::Random(matSize);
+            //for (int j=0; j<matSize; j++) {
+                //if (v(j) < 0.5) {
+                    //v(j) = 0;
+                //} else {
+                    //v(j) = 1;
+                //}
+            //}
+            //Eigen::MatrixXd mat = v * v.transpose();
+            //positiveMats.push_back(mat);
+        //}
+        //for (int i=0; i<matSize; i++) {
+            //Eigen::MatrixXd mat = Eigen::MatrixXd::Zero(matSize, matSize);
+            //mat(i, i) = 1;
+            //positiveMats.push_back(mat);
+        //}
+        if (verbosity >= 3) {
+            for (int i=0; i<positiveMats.size(); i++) {
+                std::cout << positiveMats[i] << std::endl;
+                std::cout << std::endl;
+            }
+        }
+
+        // Generate the moment matrix as a linear combination of these
+        std::vector<std::vector<Poly>> newMomentMatrix(matSize, std::vector<Poly>(matSize, Poly(0)));
+        for (int i=0; i<positiveMats.size(); i++) {
+            for (int j=0; j<matSize; j++) {
+                for (int k=0; k<matSize; k++) {
+                    newMomentMatrix[j][k] += Poly("<L" + std::to_string(i) + ">") * Poly(positiveMats[i](j, k));
+                }
+            }
+        }
+
+        // Equate these two, element-wise, as new linear zero constraints
+        for (int i=0; i<matSize; i++) {
+            for (int j=i; j<matSize; j++) {
+                constraintsZero.push_back(newMomentMatrix[i][j] - momentMatrices[0][i][j]);
+            }
+        }
+        momentMatrices = {};
+        if (verbosity >= 3) {
+            std::cout << "Linear zero constraints: " << std::endl;
+            for (int i=0; i<constraintsZero.size(); i++) {
+                std::cout << constraintsZero[i] << std::endl;
+            }
+        }
+
+        // All the L's are positive
+        for (int i=0; i<positiveMats.size(); i++) {
+            constraintsPositive.push_back(Poly("<L" + std::to_string(i) + ">"));
+        }
+
+        // Solve the now linear program
+        std::map<Mon, std::complex<double>> varVals;
+        std::pair<int,int> varBounds = {-1, 1};
+        double res = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, varBounds, &varVals);
+        std::cout << res << std::endl;
+
+        return 0;
+
+    }
+
     // Iterative scheme TODO
     if (testing == 7) {
 
