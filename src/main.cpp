@@ -10,13 +10,8 @@
 // Import Eigen
 #include <Eigen/Dense>
 
-// Local libs
-#include "poly.h"
-#include "utils.h"
-#include "mon.h"
-#include "optMOSEK.h"
-#include "optSCS.h"
-#include "optOptim.h"
+// PolyNC
+#include "../../PolyNC/src/polync.h"
 
 // Define addition and subtraction of maps
 std::map<Mon, std::complex<double>> operator+(const std::map<Mon, std::complex<double>>& a, const std::map<Mon, std::complex<double>>& b) {
@@ -89,6 +84,7 @@ int main(int argc, char* argv[]) {
     // Define the Bell scenario
     int level = 1;
     bool useDual = false;
+    bool envelopes = false;
     Poly bellFunc("<A1B1>+<A1B2>+<A2B1>-<A2B2>");
     int testing = 0;
     int verbosity = 1;
@@ -256,6 +252,8 @@ int main(int argc, char* argv[]) {
             std::cout << "  --R3322         Use the randomized I3322 scenario" << std::endl;
             std::cout << "  --RXX22 <int>   Use the randomized scenario with arbitrary number of inputs" << std::endl;
             std::cout << "  --ising <int>   A randomized fully-connected Ising model" << std::endl;
+            std::cout << "  -O <str>        Use a custom objective" << std::endl;
+            std::cout << "  -V              Use McCormick envelopes" << std::endl;
             std::cout << "  -c <int>        Number of CPU threads to use" << std::endl;
             std::cout << "  -l <int>        Level of the moment matrix" << std::endl;
             std::cout << "  -i <int>        Iteration limit" << std::endl;
@@ -279,6 +277,12 @@ int main(int argc, char* argv[]) {
             std::cout << "  -01             Use 0/1 output instead of -1/1" << std::endl;
             return 0;
 
+        // If using a custom objective
+        } else if (argAsString == "-O") {
+            bellFunc = Poly(argv[i+1]);
+            problemName = "CUSTOM";
+            i++;
+
         // If using a specific top row
         } else if (argAsString == "-M") {
             forcedTopRow = std::string(argv[i+1]);
@@ -292,6 +296,10 @@ int main(int argc, char* argv[]) {
         // If using the dual
         } else if (argAsString == "-D") {
             useDual = true;
+
+        // If using envelopes
+        } else if (argAsString == "-V") {
+            envelopes = true;
 
         // If told to use the Ising model
         } else if (argAsString == "--ising") {
@@ -447,6 +455,60 @@ int main(int argc, char* argv[]) {
     std::vector<Poly> constraintsZero;
     std::vector<Poly> constraintsPositive;
 
+    // If using McCormick envelopes TODO
+    if (envelopes) {
+
+        // Count how many unique As and Bs there are
+        int numA = 0;
+        int numB = 0;
+        for (auto& term : bellFunc) {
+            for (int i=0; i<term.first.size(); i++) {
+                if (term.first[i].first == 'A') {
+                    numA = std::max(numA, term.first[i].second);
+                } else if (term.first[i].first == 'B') {
+                    numB = std::max(numB, term.first[i].second);
+                }
+            }
+        }
+
+        // For each pair of operators
+        std::vector<Mon> opListA;
+        std::vector<Mon> opListB;
+        for (int i=1; i<=numA; i++) {
+            opListA.push_back(Mon("<A" + std::to_string(i) + ">"));
+        }
+        for (int i=1; i<=numB; i++) {
+            opListB.push_back(Mon("<B" + std::to_string(i) + ">"));
+        }
+        for (int i=0; i<opListA.size(); i++) {
+            for (int j=0; j<opListB.size(); j++) {
+
+                // Get the operators
+                Poly A = opListA[i];
+                Poly B = opListB[j];
+                Poly AB = A * B;
+
+                // (A + I) (B + I) >= 0
+                // <AB> + <A> + <B> + 1 >= 0
+                constraintsPositive.push_back(AB + A + B + 1);
+
+                // (A + I) (I - B) >= 0
+                // <A> - <AB> + 1 - <B> >= 0
+                constraintsPositive.push_back(A - AB + 1 - B);
+
+                // (I - A) (B + I) >= 0
+                // <B> + 1 - <AB> - <A> >= 0
+                constraintsPositive.push_back(B + 1 - AB - A);
+
+                // (I - A) (I - B) >= 0
+                // 1 - <A> - <B> + <AB> >= 0
+                constraintsPositive.push_back(1 - A - B + AB);
+
+            }
+        }
+
+    }
+
     // If using the dual
     if (useDual) {
         if (verbosity >= 3) {
@@ -523,7 +585,7 @@ int main(int argc, char* argv[]) {
             momentMatrices[0] = generateFromTopRow(topRow, use01);
 
             // Solve the problem
-            double res = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, varBounds, &varVals);
+            double res = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, varBounds, 0, &varVals);
             std::cout << objective;
             std::cout << " | ";
             for (int j=0; j<topRow.size(); j++) {
@@ -645,7 +707,7 @@ int main(int argc, char* argv[]) {
         // Solve the now linear program
         std::map<Mon, std::complex<double>> varVals;
         std::pair<int,int> varBounds = {-1, 1};
-        double res = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, varBounds, &varVals);
+        double res = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, varBounds, 0, &varVals);
         std::cout << res << std::endl;
 
         return 0;
@@ -658,12 +720,12 @@ int main(int argc, char* argv[]) {
         // Solve this problem
         std::map<Mon, std::complex<double>> varVals;
         std::pair<int,int> varBounds = {-1, 1};
-        double res = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, varBounds, &varVals);
+        double res = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, varBounds, 0, &varVals);
         std::cout << res << std::endl;
 
         // Add the constraint that the objective function is bounded
         constraintsPositive.push_back(Poly(res) - objective);
-        res = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, varBounds, &varVals);
+        res = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, varBounds, 0, &varVals);
         std::cout << res << std::endl;
 
         // A1, A2, B1, B2
@@ -693,13 +755,13 @@ int main(int argc, char* argv[]) {
             }
             std::cout << "For variable " << pair.first << std::endl;
             Poly newObj = Poly(pair.first);
-            res = solveMOSEK(newObj, momentMatrices, constraintsZero, constraintsPositive, 0, varBounds, &varVals);
+            res = solveMOSEK(newObj, momentMatrices, constraintsZero, constraintsPositive, 0, varBounds, 0, &varVals);
             std::cout << "max: " << res << std::endl;
             Poly newCon = Poly(res) - newObj;
             std::cout << "adding constraint: " << newCon << " >= 0" << std::endl;
             constraintsPositive.push_back(newCon);
             newObj = Poly(-1, pair.first);
-            res = solveMOSEK(newObj, momentMatrices, constraintsZero, constraintsPositive, 0, varBounds, &varVals);
+            res = solveMOSEK(newObj, momentMatrices, constraintsZero, constraintsPositive, 0, varBounds, 0, &varVals);
             std::cout << "min: " << -res << std::endl;
             newCon = -newObj - Poly(-res);
             constraintsPositive.push_back(newCon);
@@ -709,12 +771,12 @@ int main(int argc, char* argv[]) {
         // Bound each positivity constraint
         for (int i=0; i<constraintsPositive.size(); i++) {
             std::cout << "For constraint " << constraintsPositive[i] << std::endl;
-            res = solveMOSEK(constraintsPositive[i], momentMatrices, constraintsZero, constraintsPositive, 0, varBounds, &varVals);
+            res = solveMOSEK(constraintsPositive[i], momentMatrices, constraintsZero, constraintsPositive, 0, varBounds, 0, &varVals);
             std::cout << "max: " << res << std::endl;
             Poly newCon = Poly(res) - constraintsPositive[i];
             constraintsPositive.push_back(newCon);
             std::cout << "adding constraint: " << newCon << " >= 0" << std::endl;
-            res = solveMOSEK(-constraintsPositive[i], momentMatrices, constraintsZero, constraintsPositive, 0, varBounds, &varVals);
+            res = solveMOSEK(-constraintsPositive[i], momentMatrices, constraintsZero, constraintsPositive, 0, varBounds, 0, &varVals);
             std::cout << "min: " << -res << std::endl;
             newCon = -constraintsPositive[i] - Poly(-res);
             constraintsPositive.push_back(newCon);
@@ -722,7 +784,7 @@ int main(int argc, char* argv[]) {
         }
 
         // Solve this problem
-        res = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, varBounds, &varVals);
+        res = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, varBounds, 0, &varVals);
         std::cout << "new i3322: " << res << std::endl;
 
         return 0;
@@ -780,7 +842,7 @@ int main(int argc, char* argv[]) {
             std::map<Mon, std::complex<double>> varVals;
             std::pair<int,int> varBounds = {-1, 1};
             std::vector<std::vector<std::vector<Poly>>> fixedMats = {fixedMomentMatrix};
-            double res = solveMOSEK(objective, fixedMats, constraintsZero, constraintsPositive, verbosity, varBounds, &varVals);
+            double res = solveMOSEK(objective, fixedMats, constraintsZero, constraintsPositive, verbosity, varBounds, 0, &varVals);
             std::cout << res << std::endl;
 
             // Set the variables
@@ -816,7 +878,7 @@ int main(int argc, char* argv[]) {
         for (int iter=0; iter<maxIters; iter++) {
 
             std::cout << "Linear solving " << iter << std::endl;
-            double res = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, {-1, 1}, &xMap);
+            double res = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, {-1, 1}, 0, &xMap);
 
             //if (i == 200) {
                 //std::cout << "Switching to L2" << std::endl;
@@ -948,7 +1010,7 @@ int main(int argc, char* argv[]) {
         }
         momentMatrices[0] = generateFromTopRow(topRow, use01);
         std::map<Mon, std::complex<double>> varVals;
-        double resOG = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, {-1, 1}, &varVals);
+        double resOG = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, {-1, 1}, 0, &varVals);
         std::cout << "Initial: " << resOG << std::endl;
 
         // Move a small distance in the direction of the objective
@@ -1223,7 +1285,7 @@ int main(int argc, char* argv[]) {
             }
             std::cout << std::endl;
             std::map<Mon, std::complex<double>> varVals;
-            double res = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, 0, {-1, 1}, &varVals);
+            double res = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, 0, {-1, 1}, 0, &varVals);
             std::cout << i << " " << topRow.size() << " " << std::setprecision(10) << res << " " << bestRes << std::endl;
 
             // For each pair, update the correlation matrix
@@ -1313,7 +1375,7 @@ int main(int argc, char* argv[]) {
             std::cout << topRow[j] << " ";
         }
         std::cout << std::endl;
-        double res = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, 0, {-1, 1}, &varVals);
+        double res = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, 0, {-1, 1}, 0, &varVals);
         std::cout << "Final result: " << res << std::endl;
 
         return 0;
@@ -1331,7 +1393,7 @@ int main(int argc, char* argv[]) {
         if (verbosity >= 1) {
             std::cout << "Solving with MOSEK..." << std::endl;
         }
-        res = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, varBounds, &varVals);
+        res = solveMOSEK(objective, momentMatrices, constraintsZero, constraintsPositive, verbosity, varBounds, 0, &varVals);
     } else if (solver == "SCS") {
         if (verbosity >= 1) {
             std::cout << "Solving with SCS..." << std::endl;

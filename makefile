@@ -1,33 +1,22 @@
 CXX=g++
 CXXFLAGS=-fmax-errors=3 -O3 -march=native -fopenmp -pipe
-#CXXFLAGS=-g -fmax-errors=3 -O0 -fopenmp
+DEBUGFLAGS=-g -fmax-errors=3 -Og -fopenmp
 LIBSEIGEN= -I${EIGENHOME}
 LIBSMOSEK= -I${MSKHOME}/h -L${MSKHOME}/bin -Wl,-rpath-link,${MSKHOME}/bin -Wl,-rpath=${MSKHOME}/bin -lmosek64 -lfusion64
 LIBSOPTIM= -I${OPTIMHOME}/header_only_version/ 
 LIBSSCS= -I${SCSHOME}/include/scs/ -L${SCSHOME}/lib/ -lscsdir
-LIBS=$(LIBSEIGEN) $(LIBSMOSEK) $(LIBSOPTIM) $(LIBSSCS)
+LIBSGUROBI= -I${GUROBIHOME}/include -L${GUROBIHOME}/lib -lgurobi_c++ -lgurobi110
+LIBS=$(LIBSEIGEN) $(LIBSMOSEK) $(LIBSOPTIM) $(LIBSSCS) $(LIBSGUROBI)
 FILES=$(wildcard src/*.cpp)
 ASOBJ=$(FILES:.cpp=.o)
 
-all: run
+all: run 
 
-run: $(ASOBJ)
-	$(CXX) $(CXXFLAGS) -o run $(ASOBJ) $(LIBS)
+run: src/main.cpp ../PolyNC/builds/polyncNPA.o
+	$(CXX) $(CXXFLAGS) -o run src/main.cpp ../PolyNC/builds/polyncNPA.o $(LIBS)
 
-src/main.o: src/main.cpp
-	$(CXX) $(CXXFLAGS) -c src/main.cpp -o src/main.o $(LIBSEIGEN) $(LIBSOPTIM) $(LIBSLBFGS)
-
-src/optMOSEK.o: src/optMOSEK.cpp src/optMOSEK.h
-	$(CXX) $(CXXFLAGS) -c src/optMOSEK.cpp -o src/optMOSEK.o $(LIBSMOSEK) $(LIBSEIGEN)
-
-src/optOptim.o: src/optOptim.cpp src/optOptim.h
-	$(CXX) $(CXXFLAGS) -c src/optOptim.cpp -o src/optOptim.o $(LIBSOPTIM) $(LIBSEIGEN)
-
-src/optSCS.o: src/optSCS.cpp src/optSCS.h
-	$(CXX) $(CXXFLAGS) -c src/optSCS.cpp -o src/optSCS.o $(LIBSSCS) $(LIBSEIGEN)
-
-%.o: %.cpp %.h
-	$(CXX) $(CXXFLAGS) -c $< -o $@ $(LIBSEIGEN)
+debug: src/main.cpp ../PolyNC/builds/polyncNPA.o
+	$(CXX) $(DEBUGFLAGS) -o run src/main.cpp ../PolyNC/builds/polyncNPA.o $(LIBS)
 
 clean:
 	rm -f run src/*.o
