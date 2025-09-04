@@ -363,19 +363,19 @@ int main(int argc, char* argv[]) {
         }
 
         // Add the inverse of each
-        int ogSize = monStrings.size();
-        for (int i=0; i<ogSize; i++) {
-            std::string rev;
-            for (int j=monStrings[i].size()-2; j>=0; j-=2) {
-                rev += monStrings[i][j];
-                rev += monStrings[i][j+1];
-            }
-            if (rev.size() > 0) {
-                if (std::find(monStrings.begin(), monStrings.end(), rev) == monStrings.end()) {
-                    monStrings.push_back(rev);
-                }
-            }
-        }
+        //int ogSize = monStrings.size();
+        //for (int i=0; i<ogSize; i++) {
+            //std::string rev;
+            //for (int j=monStrings[i].size()-2; j>=0; j-=2) {
+                //rev += monStrings[i][j];
+                //rev += monStrings[i][j+1];
+            //}
+            //if (rev.size() > 0) {
+                //if (std::find(monStrings.begin(), monStrings.end(), rev) == monStrings.end()) {
+                    //monStrings.push_back(rev);
+                //}
+            //}
+        //}
 
         // Add braket to each
         for (int i=0; i<monStrings.size(); i++) {
@@ -885,6 +885,22 @@ int main(int argc, char* argv[]) {
                 //momentMatCopy = momentMatricesL2;
             //}
             prevBound = res;
+
+            // Only keep the constraints closest to zero
+            int maxCons = 2000;
+            if (constraintsPositive.size() > maxCons) {
+                std::vector<std::pair<double, int>> conVals;
+                for (int i=0; i<constraintsPositive.size(); i++) {
+                    double val = constraintsPositive[i].eval(xMap).real();
+                    conVals.push_back({std::abs(val), i});
+                }
+                std::sort(conVals.begin(), conVals.end());
+                std::vector<Poly> newCons;
+                for (int i=0; i<std::min(maxCons, int(conVals.size())); i++) {
+                    newCons.push_back(constraintsPositive[conVals[i].second]);
+                }
+                constraintsPositive = newCons;
+            }
 
             // Get the resulting matrix
             std::cout << "Getting matrix" << std::endl;
@@ -1409,6 +1425,60 @@ int main(int argc, char* argv[]) {
         res = -res;
     }
     std::cout << "Result: " << std::setprecision(10) << res << std::endl;
+
+    // Checking some gradient stuff TODO
+    if (testing == -4) {
+
+        // Reconstruct the matrix
+        Eigen::MatrixXd X = Eigen::MatrixXd::Zero(momentMatrices[0].size(), momentMatrices[0].size());
+        for (size_t i=0; i<momentMatrices[0].size(); i++) {
+            for (size_t j=i; j<momentMatrices[0][i].size(); j++) {
+                X(i, j) = varVals[momentMatrices[0][i][j].getKey()].real();
+                X(j, i) = X(i, j);
+            }
+        }
+        if (verbosity >= 3) {
+            std::cout << "Final matrix: " << std::endl;
+            std::cout << X << std::endl;
+        }
+
+        // Add to the diagonal
+        double amount = 1.0;
+        for (int i=0; i<X.rows(); i++) {
+            X(i, i) += amount;
+        }
+
+        // Get the inverse
+        Eigen::MatrixXd Xinv = X.completeOrthogonalDecomposition().pseudoInverse();
+        if (verbosity >= 3) {
+            std::cout << "Inverse: " << std::endl;
+            std::cout << Xinv << std::endl;
+        }
+
+        // Get the magnitude of each column
+        std::vector<double> colMags(X.cols(), 0);
+        for (int i=0; i<X.cols(); i++) {
+            for (int j=0; j<X.rows(); j++) {
+                colMags[i] += Xinv(j, i)*Xinv(j, i);
+            }
+            colMags[i] = std::sqrt(colMags[i]);
+        }
+
+        // Sort this
+        std::vector<std::pair<int,double>> colMagsSorted;
+        for (int i=0; i<colMags.size(); i++) {
+            colMagsSorted.push_back({i, colMags[i]});
+        }
+        std::sort(colMagsSorted.begin(), colMagsSorted.end(), [](auto& left, auto& right) {
+            return left.second > right.second;
+        });
+        std::cout << "Sorted: " << std::endl;
+        for (int i=0; i<colMagsSorted.size(); i++) {
+            std::cout << "Col " << colMagsSorted[i].first << " (from monomial " << momentMatrices[0][colMagsSorted[i].first][0] << "): " << colMagsSorted[i].second << std::endl;
+        }
+
+
+    }
 
     // If I3322, convert to the 0/1 version too
     if (problemName == "I3322" && !use01) {
